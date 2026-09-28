@@ -1,6 +1,14 @@
 import { useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import type { ReactNode } from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type TextInputProps,
+  type ViewStyle,
+} from 'react-native';
 
 import { Icon, type IconName } from '@/components/mente/icon';
 import { MenteColors, MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
@@ -67,21 +75,38 @@ export function SectionHeader({
 export function Pill({
   label,
   tone = 'muted',
+  onPress,
 }: {
   label: string;
   tone?: 'muted' | 'accent' | 'positive';
+  onPress?: () => void;
 }) {
+  const pillStyle = [
+    styles.pill,
+    tone === 'accent' && styles.pillAccent,
+    tone === 'positive' && styles.pillPositive,
+  ];
+  const text = (
+    <Text
+      style={[
+        styles.pillText,
+        tone === 'accent' && styles.pillTextAccent,
+        tone === 'positive' && styles.pillTextPositive,
+      ]}>
+      {label}
+    </Text>
+  );
+
+  if (!onPress) return <View style={pillStyle}>{text}</View>;
+
   return (
-    <View style={[styles.pill, tone === 'accent' && styles.pillAccent, tone === 'positive' && styles.pillPositive]}>
-      <Text
-        style={[
-          styles.pillText,
-          tone === 'accent' && styles.pillTextAccent,
-          tone === 'positive' && styles.pillTextPositive,
-        ]}>
-        {label}
-      </Text>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      hitSlop={6}
+      onPress={onPress}
+      style={({ pressed }) => [...pillStyle, pressed && styles.pressed]}>
+      {text}
+    </Pressable>
   );
 }
 
@@ -110,21 +135,70 @@ export function IconBubble({
   );
 }
 
-/**
- * Presentational toggle matching the prototype's 42×24 switch. It flips on tap
- * so the screens feel alive, but nothing is persisted.
- */
-export function Toggle({ initial = false }: { initial?: boolean }) {
-  const [on, setOn] = useState(initial);
-
+/** Controlled switch matching the prototype's 42×24 toggle. */
+export function Toggle({
+  value,
+  onValueChange,
+  accessibilityLabel,
+}: {
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  accessibilityLabel?: string;
+}) {
   return (
     <Pressable
       accessibilityRole="switch"
-      accessibilityState={{ checked: on }}
-      onPress={() => setOn((value) => !value)}
-      style={[styles.toggle, on && styles.toggleOn]}>
-      <View style={[styles.toggleKnob, on && styles.toggleKnobOn]} />
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ checked: value }}
+      hitSlop={6}
+      onPress={() => onValueChange(!value)}
+      style={[styles.toggle, value && styles.toggleOn]}>
+      <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
     </Pressable>
+  );
+}
+
+/** Full-width button in the prototype's two weights. */
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  disabled = false,
+  style,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary';
+  disabled?: boolean;
+  style?: ViewStyle;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.button,
+        variant === 'secondary' && styles.buttonSecondary,
+        (pressed || disabled) && styles.pressed,
+        style,
+      ]}>
+      <Text style={[styles.buttonText, variant === 'secondary' && styles.buttonTextSecondary]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Compact text input for forms that live inside a card. */
+export function Input({ style, ...props }: TextInputProps) {
+  return (
+    <TextInput
+      placeholderTextColor={MenteColors.textMuted}
+      style={[styles.input, props.multiline && styles.inputMultiline, style]}
+      {...props}
+    />
   );
 }
 
@@ -262,6 +336,39 @@ const styles = StyleSheet.create({
   },
   toggleKnobOn: {
     marginLeft: 21,
+  },
+  button: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: MenteRadius.button,
+    backgroundColor: MenteColors.primary,
+  },
+  buttonSecondary: {
+    borderWidth: 1,
+    borderColor: MenteColors.border,
+    backgroundColor: MenteColors.surface,
+  },
+  buttonText: {
+    ...MenteType.button,
+    fontSize: 15,
+    color: MenteColors.onPrimary,
+  },
+  buttonTextSecondary: {
+    color: MenteColors.accent,
+  },
+  input: {
+    ...MenteType.body,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: MenteRadius.chip,
+    backgroundColor: MenteColors.background,
+    color: MenteColors.text,
+  },
+  inputMultiline: {
+    minHeight: 72,
+    textAlignVertical: 'top',
   },
   settingRow: {
     flexDirection: 'row',

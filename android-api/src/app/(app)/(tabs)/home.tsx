@@ -1,53 +1,72 @@
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '@/auth';
 import { Icon } from '@/components/mente/icon';
 import { Screen } from '@/components/mente/screen';
 import { Card, SectionHeader, Spacer } from '@/components/mente/ui';
 import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
+import { moodScore, moodState, suggestionFor, todayCheckIn } from '@/data/insights';
+import type { ToolId } from '@/data/types';
+import { useUserData } from '@/data/user-data-context';
+import { WEEKDAY_INITIALS, formatLongDate, fromDayKey, lastDays } from '@/lib/dates';
 
-const METRICS = [
-  { label: 'Humor', value: '4', scale: '/5', color: MenteColors.mood },
-  { label: 'Ansiedade', value: '3', scale: '/10', color: MenteColors.anxiety },
-  { label: 'Energia', value: '4', scale: '/5', color: MenteColors.energy },
-] as const;
+/** Tallest bar in the 7-day chart, in points — a 5/5 mood. */
+const BAR_MAX = 52;
+const BAR_EMPTY = 4;
+const WATER_GOAL = 8;
 
-/** Bar heights come straight from the Figma chart, in points. */
-const WEEK = [
-  { day: 'S', height: 26 },
-  { day: 'T', height: 34 },
-  { day: 'Q', height: 22 },
-  { day: 'Q', height: 44 },
-  { day: 'S', height: 38 },
-  { day: 'S', height: 52 },
-  { day: 'D', height: 46, today: true },
-] as const;
-
-const HABITS = [
-  { value: '7h20', label: 'Sono', color: MenteColors.energy },
-  { value: '30 min', label: 'Atividade', color: MenteColors.mood },
-  { value: '5/8 copos', label: 'Água', color: MenteColors.primary },
-] as const;
-
-const SHORTCUTS = [
-  { icon: 'breath', title: 'Respiração', duration: '2 min' },
-  { icon: 'moon', title: 'Meditação', duration: '5 min' },
-] as const;
+const SHORTCUTS: readonly { icon: 'breath' | 'moon'; title: string; duration: string; tool: ToolId }[] = [
+  { icon: 'breath', title: 'Respiração', duration: '2 min', tool: 'breathing' },
+  { icon: 'moon', title: 'Meditação', duration: '5 min', tool: 'meditation' },
+];
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { data, actions } = useUserData();
+
+  const today = todayCheckIn(data);
+  const firstName = user?.name.split(' ')[0] ?? '';
+  const water = data.water[lastDays(1)[0]] ?? 0;
+
+  const metrics = [
+    { label: 'Humor', value: today ? String(moodScore(today)) : '–', scale: '/5', color: MenteColors.mood },
+    { label: 'Ansiedade', value: today ? String(today.anxiety) : '–', scale: '/10', color: MenteColors.anxiety },
+    { label: 'Energia', value: today ? String(today.energy) : '–', scale: '/5', color: MenteColors.energy },
+  ];
+
+  const week = lastDays(7).map((day, index) => {
+    const checkIn = data.checkIns[day];
+    return {
+      day,
+      initial: WEEKDAY_INITIALS[fromDayKey(day).getDay()],
+      height: checkIn ? (moodScore(checkIn) / 5) * BAR_MAX : BAR_EMPTY,
+      today: index === 6,
+    };
+  });
+
+  const habits = [
+    { key: 'sleep', value: today?.sleep ?? '–', label: 'Sono', color: MenteColors.energy },
+    {
+      key: 'activity',
+      value: today?.activity.trim() ? today.activity.split('·')[0].trim() : '–',
+      label: 'Atividade',
+      color: MenteColors.mood,
+    },
+  ];
 
   return (
     <Screen>
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Olá, Mariana</Text>
-          <Text style={styles.date}>Sexta-feira, 24 de Outubro</Text>
+          <Text style={styles.greeting}>Olá, {firstName}</Text>
+          <Text style={styles.date}>{formatLongDate()}</Text>
         </View>
         <Spacer />
         <View style={styles.statePill}>
           <View style={styles.stateDot} />
-          <Text style={styles.stateText}>PAZ</Text>
+          <Text style={styles.stateText}>{moodState(today)}</Text>
         </View>
       </View>
 
@@ -59,7 +78,7 @@ export default function HomeScreen() {
         />
 
         <View style={styles.metricRow}>
-          {METRICS.map((metric) => (
+          {metrics.map((metric) => (
             <View key={metric.label} style={styles.metric}>
               <View style={styles.metricValueRow}>
                 <Text style={styles.metricValue}>{metric.value}</Text>
@@ -71,19 +90,19 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        <View style={styles.chart}>
-          {WEEK.map((entry, index) => (
-            <View key={`${entry.day}-${index}`} style={styles.chartColumn}>
+        <View style={styles.chart} accessibilityLabel="Humor dos últimos 7 dias">
+          {week.map((entry) => (
+            <View key={entry.day} style={styles.chartColumn}>
               <View
                 style={[
                   styles.chartBar,
                   {
                     height: entry.height,
-                    backgroundColor: 'today' in entry ? MenteColors.barToday : MenteColors.barIdle,
+                    backgroundColor: entry.today ? MenteColors.barToday : MenteColors.barIdle,
                   },
                 ]}
               />
-              <Text style={styles.chartLabel}>{entry.day}</Text>
+              <Text style={styles.chartLabel}>{entry.initial}</Text>
             </View>
           ))}
         </View>
@@ -93,17 +112,38 @@ export default function HomeScreen() {
         accessibilityRole="button"
         onPress={() => router.push('/check-in')}
         style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-        <Text style={styles.primaryButtonText}>Fazer check-in</Text>
+        <Text style={styles.primaryButtonText}>
+          {today ? 'Atualizar check-in de hoje' : 'Fazer check-in'}
+        </Text>
       </Pressable>
 
       <View style={styles.habitRow}>
-        {HABITS.map((habit) => (
-          <View key={habit.label} style={styles.habit}>
+        {habits.map((habit) => (
+          <Pressable
+            key={habit.key}
+            accessibilityRole="button"
+            onPress={() => router.push('/check-in')}
+            style={({ pressed }) => [styles.habit, pressed && styles.pressed]}>
             <View style={[styles.habitDot, { backgroundColor: habit.color }]} />
-            <Text style={styles.habitValue}>{habit.value}</Text>
+            <Text style={styles.habitValue} numberOfLines={1}>
+              {habit.value}
+            </Text>
             <Text style={styles.habitLabel}>{habit.label}</Text>
-          </View>
+          </Pressable>
         ))}
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Água: ${water} de ${WATER_GOAL} copos. Toque para adicionar um copo, segure para remover.`}
+          onPress={() => actions.addWater(1)}
+          onLongPress={() => actions.addWater(-1)}
+          style={({ pressed }) => [styles.habit, pressed && styles.pressed]}>
+          <View style={[styles.habitDot, { backgroundColor: MenteColors.primary }]} />
+          <Text style={styles.habitValue}>
+            {water}/{WATER_GOAL} copos
+          </Text>
+          <Text style={styles.habitLabel}>Água · toque +1</Text>
+        </Pressable>
       </View>
 
       <View style={styles.suggestionCard}>
@@ -111,10 +151,7 @@ export default function HomeScreen() {
           <Icon name="breath" size={16} color={MenteColors.greenText} />
           <Text style={styles.suggestionTitle}>Sugestão para agora</Text>
         </View>
-        <Text style={styles.suggestionBody}>
-          Sua ansiedade subiu à tarde. Que tal 3 minutos de respiração 4-7-8 antes da próxima
-          reunião?
-        </Text>
+        <Text style={styles.suggestionBody}>{suggestionFor(today)}</Text>
       </View>
 
       <View style={styles.shortcutRow}>
@@ -122,7 +159,7 @@ export default function HomeScreen() {
           <Pressable
             key={shortcut.title}
             accessibilityRole="button"
-            onPress={() => router.navigate('/tools')}
+            onPress={() => router.push({ pathname: '/practice', params: { tool: shortcut.tool } })}
             style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}>
             <Icon name={shortcut.icon} size={20} color={MenteColors.accent} />
             <View>

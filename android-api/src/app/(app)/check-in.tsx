@@ -2,11 +2,14 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
+  KeyboardAvoidingView,
   LayoutChangeEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,11 +17,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '@/components/mente/icon';
 import { Card, Spacer, TopBar } from '@/components/mente/ui';
 import { MenteColors, MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
+import { historyInsights, todayCheckIn } from '@/data/insights';
+import { DEFAULT_SYMPTOMS, MOODS, SLEEP_QUALITY, type SleepQuality } from '@/data/types';
+import { useUserData } from '@/data/user-data-context';
+import { formatTime, toDayKey } from '@/lib/dates';
 
-const MOODS = ['Muito mal', 'Mal', 'Neutro', 'Bem', 'Ótimo'] as const;
 const ENERGY_LEVELS = [1, 2, 3, 4, 5] as const;
-const SLEEP_QUALITY = ['Ruim', 'Regular', 'Boa', 'Ótima'] as const;
-const SYMPTOMS = ['Dor de cabeça', 'Tensão', 'Cansaço'] as const;
 
 const ANXIETY_MAX = 10;
 
@@ -78,13 +82,22 @@ function Eyes({ color }: { color: string }) {
 
 export default function CheckInScreen() {
   const router = useRouter();
+  const { data, actions } = useUserData();
+  // Re-opening the screen edits today's check-in instead of starting over.
+  const existing = todayCheckIn(data);
 
-  const [mood, setMood] = useState(3);
-  const [anxiety, setAnxiety] = useState(3);
-  const [energy, setEnergy] = useState(4);
-  const [sleep, setSleep] = useState<string>('Boa');
-  const [symptoms, setSymptoms] = useState<string[]>(['Tensão']);
+  const [mood, setMood] = useState(existing?.mood ?? 2);
+  const [anxiety, setAnxiety] = useState(existing?.anxiety ?? 3);
+  const [energy, setEnergy] = useState(existing?.energy ?? 3);
+  const [sleep, setSleep] = useState<SleepQuality>(existing?.sleep ?? 'Boa');
+  const [symptoms, setSymptoms] = useState<string[]>(existing?.symptoms ?? []);
+  const [activity, setActivity] = useState(existing?.activity ?? '');
+  const [weight, setWeight] = useState(existing?.weight ?? '');
+  const [newSymptom, setNewSymptom] = useState<string | null>(null);
   const [trackWidth, setTrackWidth] = useState(0);
+
+  const symptomOptions = [...DEFAULT_SYMPTOMS, ...data.customSymptoms];
+  const insight = historyInsights(data)[0] ?? 'Com alguns check-ins, mostramos aqui o que influencia o seu humor.';
 
   const toggleSymptom = (symptom: string) =>
     setSymptoms((current) =>
@@ -93,18 +106,56 @@ export default function CheckInScreen() {
         : [...current, symptom],
     );
 
+  const commitSymptom = () => {
+    const symptom = newSymptom?.trim();
+    if (symptom) {
+      actions.addCustomSymptom(symptom);
+      setSymptoms((current) => (current.includes(symptom) ? current : [...current, symptom]));
+    }
+    setNewSymptom(null);
+  };
+
+  const setAnxietyFrom = (x: number) => {
+    if (!trackWidth) return;
+    const ratio = x / trackWidth;
+    setAnxiety(Math.round(Math.min(Math.max(ratio, 0), 1) * ANXIETY_MAX));
+  };
+
+  const save = () => {
+    actions.saveCheckIn({
+      day: toDayKey(),
+      mood,
+      anxiety,
+      energy,
+      sleep,
+      symptoms,
+      activity: activity.trim(),
+      weight: weight.trim(),
+    });
+    if (router.canGoBack()) router.back();
+    else router.replace('/home');
+  };
+
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <KeyboardAvoidingView
+          style={styles.safeArea}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
           <TopBar
             title="Check-in diário"
             right={
               <View style={styles.savedChip}>
-                <View style={styles.savedDot} />
-                <Text style={styles.savedText}>Salvo às 9:41</Text>
+                <View style={[styles.savedDot, !existing && styles.savedDotIdle]} />
+                <Text style={styles.savedText}>
+                  {existing ? `Salvo às ${formatTime(new Date(existing.savedAt))}` : 'Não salvo'}
+                </Text>
               </View>
             }
           />
@@ -137,17 +188,28 @@ export default function CheckInScreen() {
               </View>
             </View>
 
-            <Pressable
+            <View
               accessibilityRole="adjustable"
+              accessibilityLabel="Nível de ansiedade"
               accessibilityValue={{ min: 0, max: ANXIETY_MAX, now: anxiety }}
+              accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+              onAccessibilityAction={(event) =>
+                setAnxiety((value) =>
+                  Math.min(
+                    Math.max(value + (event.nativeEvent.actionName === 'increment' ? 1 : -1), 0),
+                    ANXIETY_MAX,
+                  ),
+                )
+              }
               onLayout={(event: LayoutChangeEvent) =>
                 setTrackWidth(event.nativeEvent.layout.width)
               }
-              onPress={(event) => {
-                if (!trackWidth) return;
-                const ratio = event.nativeEvent.locationX / trackWidth;
-                setAnxiety(Math.round(Math.min(Math.max(ratio, 0), 1) * ANXIETY_MAX));
-              }}
+              // Tap or drag anywhere on the track.
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderTerminationRequest={() => false}
+              onResponderGrant={(event) => setAnxietyFrom(event.nativeEvent.locationX)}
+              onResponderMove={(event) => setAnxietyFrom(event.nativeEvent.locationX)}
               style={styles.slider}>
               <View style={styles.sliderTrack} />
               <View style={[styles.sliderFill, { width: `${(anxiety / ANXIETY_MAX) * 100}%` }]} />
@@ -156,8 +218,9 @@ export default function CheckInScreen() {
                   styles.sliderKnob,
                   { left: `${(anxiety / ANXIETY_MAX) * 100}%`, marginLeft: -11 },
                 ]}
+                pointerEvents="none"
               />
-            </Pressable>
+            </View>
 
             <View style={styles.sliderLegend}>
               <Text style={styles.sliderLegendText}>Calma</Text>
@@ -204,7 +267,7 @@ export default function CheckInScreen() {
 
             <Text style={styles.cardTitle}>Sintomas físicos</Text>
             <View style={styles.tagRow}>
-              {SYMPTOMS.map((symptom) => {
+              {symptomOptions.map((symptom) => {
                 const selected = symptoms.includes(symptom);
                 return (
                   <Pressable
@@ -219,37 +282,67 @@ export default function CheckInScreen() {
                   </Pressable>
                 );
               })}
-              <Pressable accessibilityRole="button" accessibilityLabel="Adicionar sintoma" style={styles.tag}>
-                <Text style={styles.tagText}>+</Text>
-              </Pressable>
+              {newSymptom === null ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Adicionar sintoma"
+                  onPress={() => setNewSymptom('')}
+                  style={styles.tag}>
+                  <Text style={styles.tagText}>+</Text>
+                </Pressable>
+              ) : (
+                <TextInput
+                  autoFocus
+                  placeholder="Novo sintoma"
+                  placeholderTextColor={MenteColors.textMuted}
+                  value={newSymptom}
+                  onChangeText={setNewSymptom}
+                  onSubmitEditing={commitSymptom}
+                  onBlur={commitSymptom}
+                  returnKeyType="done"
+                  style={[styles.tag, styles.tagInput]}
+                />
+              )}
             </View>
           </Card>
 
           <View style={styles.extraRow}>
             <Card style={styles.extraCard}>
               <Text style={styles.extraLabel}>Atividade física</Text>
-              <Text style={styles.extraValue}>30 min · Caminhada</Text>
+              <TextInput
+                placeholder="30 min · Caminhada"
+                placeholderTextColor={MenteColors.textMuted}
+                value={activity}
+                onChangeText={setActivity}
+                style={styles.extraValue}
+              />
             </Card>
             <Card style={styles.extraCard}>
               <Text style={styles.extraLabel}>Peso (opcional)</Text>
-              <Text style={styles.extraValue}>62,4 kg</Text>
+              <TextInput
+                placeholder="62,4 kg"
+                placeholderTextColor={MenteColors.textMuted}
+                inputMode="decimal"
+                value={weight}
+                onChangeText={setWeight}
+                style={styles.extraValue}
+              />
             </Card>
           </View>
 
           <View style={styles.insight}>
             <Icon name="tools" size={18} color={MenteColors.accent} />
-            <Text style={styles.insightText}>
-              Seu humor está melhor nos dias em que você dorme bem.
-            </Text>
+            <Text style={styles.insightText}>{insight}</Text>
           </View>
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.replace('/home')}
+            onPress={save}
             style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>
             <Text style={styles.saveButtonText}>Salvar e ver resumo do dia</Text>
           </Pressable>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
@@ -294,6 +387,9 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 3.5,
     backgroundColor: MenteColors.mood,
+  },
+  savedDotIdle: {
+    backgroundColor: MenteColors.border,
   },
   savedText: {
     ...MenteType.tiny,
@@ -420,6 +516,11 @@ const styles = StyleSheet.create({
     borderRadius: MenteRadius.chip,
     backgroundColor: MenteColors.background,
   },
+  tagInput: {
+    ...MenteType.caption,
+    minWidth: 120,
+    color: MenteColors.text,
+  },
   tagGrow: {
     flex: 1,
   },
@@ -452,6 +553,7 @@ const styles = StyleSheet.create({
   },
   extraValue: {
     ...MenteType.captionStrong,
+    padding: 0,
     color: MenteColors.text,
   },
   insight: {

@@ -1,11 +1,19 @@
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/mente/icon';
 import { Screen } from '@/components/mente/screen';
-import { Card, IconBubble, Spacer, TopBar } from '@/components/mente/ui';
+import { Button, Card, IconBubble, Input, Spacer, TopBar } from '@/components/mente/ui';
 import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
+import { TOOL_NAMES, practiceSummary, practicesThisMonth } from '@/data/insights';
+import type { ToolId } from '@/data/types';
+import { useUserData } from '@/data/user-data-context';
+import { formatShortDate } from '@/lib/dates';
+import { notify } from '@/lib/dialogs';
 
 const TOOLS: readonly {
+  tool: ToolId;
   icon: IconName;
   title: string;
   detail: string;
@@ -13,6 +21,7 @@ const TOOLS: readonly {
   color: string;
 }[] = [
   {
+    tool: 'breathing',
     icon: 'wave',
     title: 'Técnica 4-7-8',
     detail: 'Acalma em 4 ciclos',
@@ -20,6 +29,7 @@ const TOOLS: readonly {
     color: MenteColors.accent,
   },
   {
+    tool: 'meditation',
     icon: 'moon',
     title: 'Meditação guiada',
     detail: '8 trilhas de 3 a 15 min',
@@ -27,6 +37,7 @@ const TOOLS: readonly {
     color: MenteColors.purpleText,
   },
   {
+    tool: 'grounding',
     icon: 'anchor',
     title: 'Grounding 5-4-3-2-1',
     detail: 'Volte para o presente',
@@ -34,6 +45,7 @@ const TOOLS: readonly {
     color: MenteColors.greenText,
   },
   {
+    tool: 'affirmations',
     icon: 'heart',
     title: 'Afirmações',
     detail: 'Frases para hoje',
@@ -43,12 +55,40 @@ const TOOLS: readonly {
 ];
 
 const STEPS = [
-  { label: 'Pensamento negativo', value: '“Eu vou estragar a apresentação.”' },
-  { label: 'Sentimento', value: 'Ansiedade · 7/10' },
-  { label: 'Pensamento alternativo', value: '“Já me preparei e posso errar sem ser um fracasso.”' },
+  { key: 'negative', label: 'Pensamento negativo', placeholder: '“Eu vou estragar a apresentação.”' },
+  { key: 'feeling', label: 'Sentimento', placeholder: 'Ansiedade · 7/10' },
+  {
+    key: 'alternative',
+    label: 'Pensamento alternativo',
+    placeholder: '“Já me preparei e posso errar sem ser um fracasso.”',
+  },
 ] as const;
 
+type StepKey = (typeof STEPS)[number]['key'];
+const EMPTY_THOUGHT: Record<StepKey, string> = { negative: '', feeling: '', alternative: '' };
+
 export default function ToolsScreen() {
+  const router = useRouter();
+  const { data, actions } = useUserData();
+  const [thought, setThought] = useState(EMPTY_THOUGHT);
+  const [showPractices, setShowPractices] = useState(false);
+
+  const summary = practiceSummary(data);
+  const monthPractices = practicesThisMonth(data);
+  const canSaveThought = thought.negative.trim() && thought.alternative.trim();
+
+  const start = (tool: ToolId) => router.push({ pathname: '/practice', params: { tool } });
+
+  const saveThought = () => {
+    actions.saveThought({
+      negative: thought.negative.trim(),
+      feeling: thought.feeling.trim(),
+      alternative: thought.alternative.trim(),
+    });
+    setThought(EMPTY_THOUGHT);
+    notify('Registro salvo', 'Reescrever um pensamento é um treino — cada vez fica mais fácil.');
+  };
+
   return (
     <Screen>
       <TopBar title="Ferramentas" />
@@ -65,6 +105,7 @@ export default function ToolsScreen() {
           </Text>
           <Pressable
             accessibilityRole="button"
+            onPress={() => start('breathing')}
             style={({ pressed }) => [styles.breathButton, pressed && styles.pressed]}>
             <Text style={styles.breathButtonText}>Começar agora</Text>
           </Pressable>
@@ -76,6 +117,7 @@ export default function ToolsScreen() {
           <Pressable
             key={tool.title}
             accessibilityRole="button"
+            onPress={() => start(tool.tool)}
             style={({ pressed }) => [styles.toolCard, pressed && styles.pressed]}>
             <IconBubble
               name={tool.icon}
@@ -94,29 +136,64 @@ export default function ToolsScreen() {
         <View style={styles.restructureHeader}>
           <Icon name="bulb" size={18} color={MenteColors.anxiety} />
           <Text style={styles.restructureTitle}>Reestruturação de pensamentos</Text>
+          {data.thoughts.length ? (
+            <Text style={styles.practiceDetail}>{data.thoughts.length} salvos</Text>
+          ) : null}
         </View>
 
         {STEPS.map((step, index) => (
-          <View key={step.label} style={styles.step}>
+          <View key={step.key} style={styles.step}>
             <View style={styles.stepNumber}>
               <Text style={styles.stepNumberText}>{index + 1}</Text>
             </View>
             <View style={styles.stepText}>
               <Text style={styles.stepLabel}>{step.label}</Text>
-              <Text style={styles.stepValue}>{step.value}</Text>
+              <Input
+                multiline={step.key !== 'feeling'}
+                placeholder={step.placeholder}
+                value={thought[step.key]}
+                onChangeText={(value) => setThought((current) => ({ ...current, [step.key]: value }))}
+                style={styles.stepInput}
+              />
             </View>
           </View>
         ))}
+
+        <Button label="Salvar registro" onPress={saveThought} disabled={!canSaveThought} />
       </Card>
 
-      <View style={styles.practiceRow}>
-        <Icon name="chart" size={17} color={MenteColors.accent} />
-        <View style={styles.practiceText}>
-          <Text style={styles.practiceTitle}>12 práticas este mês</Text>
-          <Text style={styles.practiceDetail}>Respiração 7 · Meditação 4 · Grounding 1</Text>
+      <View style={styles.practiceCard}>
+        <View style={styles.practiceRow}>
+          <Icon name="chart" size={17} color={MenteColors.accent} />
+          <View style={styles.practiceText}>
+            <Text style={styles.practiceTitle}>
+              {summary.total} {summary.total === 1 ? 'prática' : 'práticas'} este mês
+            </Text>
+            <Text style={styles.practiceDetail}>
+              {summary.counts.length
+                ? summary.counts.map((item) => `${TOOL_NAMES[item.tool]} ${item.count}`).join(' · ')
+                : 'Nenhuma prática ainda'}
+            </Text>
+          </View>
+          <Spacer />
+          {monthPractices.length ? (
+            <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setShowPractices((v) => !v)}>
+              <Text style={styles.practiceLink}>{showPractices ? 'Ocultar' : 'Ver tudo'}</Text>
+            </Pressable>
+          ) : null}
         </View>
-        <Spacer />
-        <Text style={styles.practiceLink}>Ver tudo</Text>
+
+        {showPractices
+          ? monthPractices.map((practice) => (
+              <View key={practice.id} style={styles.practiceItem}>
+                <Text style={styles.practiceItemText}>{TOOL_NAMES[practice.tool]}</Text>
+                <Spacer />
+                <Text style={styles.practiceDetail}>
+                  {formatShortDate(new Date(practice.at))} · {Math.max(1, Math.round(practice.durationSec / 60))} min
+                </Text>
+              </View>
+            ))
+          : null}
       </View>
     </Screen>
   );
@@ -228,20 +305,38 @@ const styles = StyleSheet.create({
     ...MenteType.link,
     color: MenteColors.textMuted,
   },
-  stepValue: {
+  stepInput: {
     ...MenteType.small,
-    color: MenteColors.text,
+    minHeight: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 2,
+    backgroundColor: 'transparent',
   },
-  practiceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  practiceCard: {
+    gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: MenteRadius.row,
     backgroundColor: MenteColors.surface,
   },
+  practiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  practiceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: MenteColors.border,
+  },
+  practiceItemText: {
+    ...MenteType.small,
+    color: MenteColors.text,
+  },
   practiceText: {
+    flexShrink: 1,
     gap: 2,
   },
   practiceTitle: {

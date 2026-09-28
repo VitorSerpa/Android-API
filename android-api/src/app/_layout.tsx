@@ -7,6 +7,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 
+import { AuthProvider, useAuth } from '@/auth';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 
 SplashScreen.preventAutoHideAsync();
@@ -25,15 +26,43 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <AuthProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <RootNavigator />
+      </ThemeProvider>
+    </AuthProvider>
+  );
+}
+
+/**
+ * `Stack.Protected` is the auth gate: when `status` flips, screens whose guard
+ * turns false become unreachable and the router falls back to `index`, which
+ * redirects to the right side of the wall.
+ */
+function RootNavigator() {
+  const { status } = useAuth();
+
+  // Still reading the stored session: keep the splash up rather than flashing
+  // the login screen at someone who is already signed in.
+  if (status === 'loading') return null;
+
+  const signedIn = status === 'signedIn';
+
+  return (
+    <>
       <AnimatedSplashOverlay />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="check-in" />
-        <Stack.Screen name="emergency" />
-        <Stack.Screen name="reminders" />
+
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" />
+          <Stack.Screen name="sign-up" />
+        </Stack.Protected>
+
+        <Stack.Protected guard={signedIn}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
       </Stack>
-    </ThemeProvider>
+    </>
   );
 }

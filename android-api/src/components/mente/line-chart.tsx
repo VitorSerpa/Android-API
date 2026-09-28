@@ -3,8 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { MenteColors } from '@/constants/mente-theme';
 
 export type Series = {
-  /** One value per point, normalised to 0 (bottom) … 1 (top). */
-  values: readonly number[];
+  /** One value per point, normalised to 0 (bottom) … 1 (top). `null` leaves a gap. */
+  values: readonly (number | null)[];
   color: string;
   /** Draws a dot at every point, as the prototype does for the mood line. */
   dots?: boolean;
@@ -43,11 +43,12 @@ export function LineChart({
 
       {series.map((line, lineIndex) =>
         line.values.map((value, index) => {
+          if (value === null) return null;
           const from = toPoint(value, index, line.values.length);
           const next = line.values[index + 1];
           const nodes = [];
 
-          if (next !== undefined) {
+          if (next !== undefined && next !== null) {
             const to = toPoint(next, index + 1, line.values.length);
             const dx = to.x - from.x;
             const dy = to.y - from.y;

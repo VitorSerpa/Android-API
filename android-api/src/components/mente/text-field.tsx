@@ -7,16 +7,18 @@ export type TextFieldProps = TextInputProps & {
   label: string;
   /** Renders the trailing reveal toggle and masks the input by default. */
   secure?: boolean;
+  /** Validation message shown under the field; also tints the border. */
+  error?: string | null;
 };
 
-export function TextField({ label, secure = false, style, ...inputProps }: TextFieldProps) {
+export function TextField({ label, secure = false, error, style, ...inputProps }: TextFieldProps) {
   const [revealed, setRevealed] = useState(false);
 
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
 
-      <View style={styles.input}>
+      <View style={[styles.input, error ? styles.inputError : null]}>
         {/* Leading glyph placeholder, as drawn in the prototype. */}
         <View style={styles.leadingIcon} />
 
@@ -37,6 +39,8 @@ export function TextField({ label, secure = false, style, ...inputProps }: TextF
           />
         )}
       </View>
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
 }
@@ -59,6 +63,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: MenteColors.border,
     backgroundColor: MenteColors.surface,
+  },
+  inputError: {
+    borderColor: MenteColors.dangerText,
+  },
+  error: {
+    ...MenteType.small,
+    color: MenteColors.dangerText,
   },
   leadingIcon: {
     width: 15,
