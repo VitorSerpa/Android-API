@@ -1,18 +1,22 @@
 import { useState } from 'react';
+import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { AuthError, useAuth } from '@/auth';
 import { validateEmail } from '@/auth/validation';
 import { AuthScreen } from '@/components/mente/auth-screen';
 import { TextField } from '@/components/mente/text-field';
+import { MenteColors, MenteType } from '@/constants/mente-theme';
+import { notify } from '@/lib/dialogs';
 
 export default function SignInScreen() {
-  const { signIn } = useAuth();
+  const { signIn, resetPassword } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string | null; password?: string | null }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const submit = async () => {
     const next = { email: validateEmail(email), password: password ? null : 'Informe sua senha.' };
@@ -29,6 +33,30 @@ export default function SignInScreen() {
         error instanceof AuthError ? error.message : 'Não foi possível entrar. Tente novamente.',
       );
       setBusy(false);
+    }
+  };
+
+  const forgotPassword = async () => {
+    const emailError = validateEmail(email);
+    setErrors({ email: emailError && 'Informe seu e-mail para redefinir a senha.' });
+    setFormError(null);
+    if (emailError) return;
+
+    setResetting(true);
+    try {
+      await resetPassword(email.trim());
+      // Same answer whether or not the account exists, so the form can't be
+      // used to find out who has one.
+      notify(
+        'Verifique seu e-mail',
+        `Se houver uma conta para ${email.trim()}, enviamos um link para redefinir a senha.`,
+      );
+    } catch (error) {
+      setFormError(
+        error instanceof AuthError ? error.message : 'Não foi possível enviar o e-mail. Tente novamente.',
+      );
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -67,6 +95,25 @@ export default function SignInScreen() {
         onSubmitEditing={submit}
         error={errors.password}
       />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: resetting }}
+        disabled={resetting}
+        hitSlop={8}
+        onPress={forgotPassword}
+        style={styles.forgot}>
+        <Text style={styles.forgotText}>{resetting ? 'Enviando…' : 'Esqueci minha senha'}</Text>
+      </Pressable>
     </AuthScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  forgot: {
+    alignSelf: 'flex-end',
+  },
+  forgotText: {
+    ...MenteType.captionStrong,
+    color: MenteColors.accent,
+  },
+});

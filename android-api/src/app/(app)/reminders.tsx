@@ -3,7 +3,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -67,7 +66,9 @@ export default function RemindersScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.safeArea}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          // Android is edge-to-edge (targetSdk 35+), where `adjustResize` no longer
+          // shrinks the window, so pad on both platforms.
+          behavior="padding">
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"

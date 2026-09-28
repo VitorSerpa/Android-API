@@ -25,6 +25,26 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Login (Firebase Authentication)
+
+O login usa e-mail e senha do [Firebase Authentication](https://firebase.google.com/docs/auth) via Firebase JS SDK (Android, iOS e web).
+
+1. No [Console do Firebase](https://console.firebase.google.com), crie um projeto e adicione um **app Web**.
+2. Em **Authentication → Método de login**, ative **E-mail/senha**.
+3. Copie `.env.example` para `.env.local` e preencha com a configuração do app Web.
+4. Reinicie o Metro (`npx expo start`) — variáveis `EXPO_PUBLIC_*` são lidas na inicialização.
+
+Para desenvolver sem um projeto real, use o emulador local:
+
+```bash
+npx firebase-tools emulators:start --only auth --project demo-mente
+adb reverse tcp:9099 tcp:9099   # só para o emulador Android
+```
+
+e em `.env.local` use `EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-mente`, qualquer `EXPO_PUBLIC_FIREBASE_API_KEY` e `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`. A interface do emulador (http://127.0.0.1:4000) mostra as contas criadas e os links de redefinição de senha.
+
+Toda a autenticação passa por `src/auth/service.ts`; as telas só conhecem a interface `AuthService`.
+
 ## Get a fresh project
 
 When you're ready, run:

@@ -25,6 +25,7 @@ type AuthContextValue = {
   signUp: (input: SignUpInput) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (patch: ProfilePatch) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -49,14 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const user = await authService.restore(stored.token);
+        const refreshed = await authService.restore(stored.token);
         if (cancelled) return;
-        if (!user) {
+        if (!refreshed) {
           await persist(null);
           setStatus('signedOut');
           return;
         }
-        const refreshed = { token: stored.token, user };
         await persist(refreshed);
         setSession(refreshed);
         setStatus('signedIn');
@@ -103,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const user = await authService.updateProfile(session.token, patch);
       await start({ token: session.token, user });
     },
+    resetPassword: (email) => authService.resetPassword(email),
   };
 
   return <AuthContext value={value}>{children}</AuthContext>;

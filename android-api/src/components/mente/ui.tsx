@@ -150,6 +150,8 @@ export function Toggle({
       accessibilityRole="switch"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ checked: value }}
+      // react-native-web ignores `accessibilityState`; `aria-checked` reaches both platforms.
+      aria-checked={value}
       hitSlop={6}
       onPress={() => onValueChange(!value)}
       style={[styles.toggle, value && styles.toggleOn]}>

@@ -5,10 +5,10 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/auth';
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -22,7 +22,7 @@ export default function RootLayout() {
   });
 
   // Keep the native splash up until Inter is ready, otherwise the login screen
-  // flashes in the system font. `AnimatedSplashOverlay` hides it once mounted.
+  // flashes in the system font. `RootNavigator` hides it once the session is known.
   if (!fontsLoaded && !fontError) return null;
 
   return (
@@ -42,27 +42,30 @@ export default function RootLayout() {
 function RootNavigator() {
   const { status } = useAuth();
 
+  useEffect(() => {
+    if (status !== 'loading') SplashScreen.hideAsync();
+  }, [status]);
+
   // Still reading the stored session: keep the splash up rather than flashing
   // the login screen at someone who is already signed in.
   if (status === 'loading') return null;
 
   const signedIn = status === 'signedIn';
 
+  // No animated overlay on top of the first screen: the template's Reanimated
+  // `entering` splash crashed Fabric on Android on ~1 in 5 cold starts.
   return (
-    <>
-      <AnimatedSplashOverlay />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
 
-        <Stack.Protected guard={!signedIn}>
-          <Stack.Screen name="sign-in" />
-          <Stack.Screen name="sign-up" />
-        </Stack.Protected>
+      <Stack.Protected guard={!signedIn}>
+        <Stack.Screen name="sign-in" />
+        <Stack.Screen name="sign-up" />
+      </Stack.Protected>
 
-        <Stack.Protected guard={signedIn}>
-          <Stack.Screen name="(app)" />
-        </Stack.Protected>
-      </Stack>
-    </>
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen name="(app)" />
+      </Stack.Protected>
+    </Stack>
   );
 }

@@ -44,11 +44,8 @@ const styles = StyleSheet.create({
     borderRadius: SIZE / 2,
     backgroundColor: MenteColors.accent,
     // Matches the soft drop shadow the FAB carries in Figma.
-    elevation: 6,
-    shadowColor: MenteColors.text,
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    // `boxShadow` works on native and web alike; the `shadow*` props warn on web.
+    boxShadow: '0px 4px 10px rgba(27, 58, 87, 0.25)',
   },
   pressed: {
     opacity: 0.85,

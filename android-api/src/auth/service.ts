@@ -1,9 +1,9 @@
-import { localAuthService } from '@/auth/local-auth-service';
+import { firebaseAuthService } from '@/auth/firebase-auth-service';
 import type { AuthService } from '@/auth/types';
 
 /**
- * The single switch for the identity backend. When the real login system is
- * ready, implement `AuthService` against it (e.g. `api-auth-service.ts`) and
- * export that here instead. Nothing else in the app needs to change.
+ * The single switch for the identity backend. Screens and `AuthProvider` only
+ * talk to `AuthService`, so moving to another provider means writing one new
+ * implementation and exporting it here — nothing else in the app changes.
  */
-export const authService: AuthService = localAuthService;
+export const authService: AuthService = firebaseAuthService;

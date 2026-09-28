@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -49,7 +48,9 @@ export function AuthScreen({
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          // Android is edge-to-edge (targetSdk 35+), where `adjustResize` no longer
+          // shrinks the window, so pad on both platforms.
+          behavior="padding">
           <ScrollView
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"

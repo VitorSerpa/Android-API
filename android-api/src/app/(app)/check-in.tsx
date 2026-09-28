@@ -4,7 +4,6 @@ import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   LayoutChangeEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -143,7 +142,9 @@ export default function CheckInScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.safeArea}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          // Android is edge-to-edge (targetSdk 35+), where `adjustResize` no longer
+          // shrinks the window, so pad on both platforms.
+          behavior="padding">
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -218,7 +219,6 @@ export default function CheckInScreen() {
                   styles.sliderKnob,
                   { left: `${(anxiety / ANXIETY_MAX) * 100}%`, marginLeft: -11 },
                 ]}
-                pointerEvents="none"
               />
             </View>
 
@@ -467,6 +467,7 @@ const styles = StyleSheet.create({
   },
   sliderKnob: {
     position: 'absolute',
+    pointerEvents: 'none',
     width: 22,
     height: 22,
     borderRadius: 11,

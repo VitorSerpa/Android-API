@@ -18,8 +18,13 @@ export type ProfilePatch = Partial<Pick<User, 'name'>>;
 
 export type AuthErrorCode =
   | 'invalid_credentials'
+  | 'invalid_email'
   | 'email_in_use'
+  | 'weak_password'
+  | 'too_many_requests'
+  | 'user_disabled'
   | 'session_expired'
+  | 'not_configured'
   | 'network'
   | 'unknown';
 
@@ -42,8 +47,14 @@ export class AuthError extends Error {
 export interface AuthService {
   signIn(input: SignInInput): Promise<Session>;
   signUp(input: SignUpInput): Promise<Session>;
-  /** Validates a stored token on launch. Resolve `null` when it is no longer valid. */
-  restore(token: string): Promise<User | null>;
+  /**
+   * Validates a stored session on launch and returns it with a fresh token.
+   * Resolve `null` when it is no longer valid; throw `AuthError('network')`
+   * when that can't be checked right now.
+   */
+  restore(token: string): Promise<Session | null>;
   signOut(token: string): Promise<void>;
   updateProfile(token: string, patch: ProfilePatch): Promise<User>;
+  /** Emails a password-reset link. Resolves even for unknown addresses. */
+  resetPassword(email: string): Promise<void>;
 }
