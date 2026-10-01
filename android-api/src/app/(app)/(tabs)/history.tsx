@@ -1,92 +1,45 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { Icon } from '@/components/mente/icon';
 import { LineChart } from '@/components/mente/line-chart';
+import { RadarChart } from '@/components/mente/radar-chart';
 import { Screen } from '@/components/mente/screen';
-import { Card, Spacer, TopBar } from '@/components/mente/ui';
-import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
-import { checkInsFor, historyInsights, moodTrend, wellbeingIndicators } from '@/data/insights';
-import type { CheckIn } from '@/data/types';
+import { Card, MIN_TOUCH, Spacer, TopBar } from '@/components/mente/ui';
+import { MenteRadius, MenteType } from '@/constants/mente-theme';
+import {
+  activityCorrelations,
+  dayAverages,
+  dayMood,
+  formatDecimal,
+  MIN_CORRELATION_DAYS,
+  moodTrend,
+  otherInsights,
+  wellbeingIndicators,
+} from '@/data/insights';
+import { MOODS } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
 import { MONTHS, WEEKDAYS_SHORT, fromDayKey, lastDays, toDayKey } from '@/lib/dates';
+import { makeStyles, useColors } from '@/theme';
 
 const PERIODS = [
-  { label: 'Semana', days: 7 },
-  { label: 'Mês', days: 30 },
+  { label: '30 dias', days: 30 },
+  { label: '7 dias', days: 7 },
 ] as const;
 
-/** Monday-first, as the prototype's calendar header reads. */
+/** Monday-first, as pt-BR calendars read. */
 const CALENDAR_HEADINGS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] as const;
 
-const CHART_HEIGHT = 76;
-const RADAR_SIZE = 96;
+const CHART_HEIGHT = 96;
 
-type Indicator = { label: string; percent: number | null; color: string };
-
-/** Calendar tint per mood: good days green, neutral blue, hard days amber. */
-function tintFor(checkIn: CheckIn | undefined) {
-  if (!checkIn) return null;
-  if (checkIn.mood >= 3) return MenteColors.mood;
-  if (checkIn.mood === 2) return MenteColors.primary;
-  return MenteColors.anxiety;
-}
-
-const formatScore = (value: number | null) =>
-  value === null ? '–' : `${value.toFixed(1).replace('.', ',')} / 5`;
-
-const formatDelta = (delta: number | null) =>
-  delta === null ? null : `${delta > 0 ? '+' : ''}${delta}%`;
-
-function Radar({ indicators }: { indicators: readonly Indicator[] }) {
-  const center = RADAR_SIZE / 2;
-
-  return (
-    <View style={styles.radar}>
-      {[1, 0.66, 0.33].map((ratio) => {
-        const size = RADAR_SIZE * ratio;
-        return (
-          <View
-            key={ratio}
-            style={[
-              styles.radarRing,
-              {
-                width: size,
-                height: size,
-                borderRadius: size / 2,
-                left: center - size / 2,
-                top: center - size / 2,
-              },
-            ]}
-          />
-        );
-      })}
-
-      {indicators.map((indicator, index) => {
-        if (indicator.percent === null) return null;
-        // Start at 12 o'clock and step a fifth of a turn per indicator.
-        const angle = (index / indicators.length) * 2 * Math.PI - Math.PI / 2;
-        const radius = (indicator.percent / 100) * (RADAR_SIZE / 2 - 4);
-
-        return (
-          <View
-            key={indicator.label}
-            style={[
-              styles.radarDot,
-              {
-                left: center + Math.cos(angle) * radius - 4,
-                top: center + Math.sin(angle) * radius - 4,
-                backgroundColor: indicator.color,
-              },
-            ]}
-          />
-        );
-      })}
-    </View>
-  );
-}
+const formatScore = (value: number | null) => (value === null ? '–' : `${formatDecimal(value)} / 5`);
+const formatDelta = (delta: number | null) => (delta === null ? null : `${delta > 0 ? '+' : ''}${delta}%`);
 
 export default function HistoryScreen() {
+  const styles = useStyles();
+  const c = useColors();
+  const router = useRouter();
   const { data } = useUserData();
   const [periodIndex, setPeriodIndex] = useState(0);
   const [chartWidth, setChartWidth] = useState(0);
@@ -95,12 +48,11 @@ export default function HistoryScreen() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
+  // CA-01: exactly the last N days, one point per day; days without check-in are gaps (null).
   const period = PERIODS[periodIndex];
   const days = lastDays(period.days);
-  const checkIns = checkInsFor(data, days);
-  const hasData = checkIns.some(Boolean);
-
-  // Week: every weekday. Month: roughly one label per week.
+  const perDay = days.map((day) => dayAverages(data, day));
+  const hasData = perDay.some((item) => item.count > 0);
   const labels =
     period.days === 7
       ? days.map((day) => WEEKDAYS_SHORT[fromDayKey(day).getDay()])
@@ -109,20 +61,21 @@ export default function HistoryScreen() {
   const weekly = moodTrend(data, 7);
   const monthly = moodTrend(data, 30);
   const averages = [
-    { label: 'Média semanal', value: formatScore(weekly.current), delta: formatDelta(weekly.delta) },
-    { label: 'Média mensal', value: formatScore(monthly.current), delta: formatDelta(monthly.delta) },
+    { label: 'Média semanal', ...weekly, previousLabel: 'na semana anterior' },
+    { label: 'Média mensal', ...monthly, previousLabel: 'nos 30 dias anteriores' },
   ];
 
   const wellbeing = wellbeingIndicators(data);
-  const indicators: Indicator[] = [
-    { label: 'Humor', percent: wellbeing.mood, color: MenteColors.mood },
-    { label: 'Sono', percent: wellbeing.sleep, color: MenteColors.primary },
-    { label: 'Energia', percent: wellbeing.energy, color: MenteColors.energy },
-    { label: 'Calma', percent: wellbeing.calm, color: MenteColors.accent },
-    { label: 'Rotina', percent: wellbeing.routine, color: MenteColors.anxiety },
+  const axes = [
+    { label: 'Humor', percent: wellbeing.mood },
+    { label: 'Sono', percent: wellbeing.sleep },
+    { label: 'Ansiedade', percent: wellbeing.anxiety },
+    { label: 'Estresse', percent: wellbeing.stress },
+    { label: 'Atividade', percent: wellbeing.activity },
   ];
 
-  const insights = historyInsights(data);
+  const correlation = activityCorrelations(data);
+  const extra = otherInsights(data);
 
   const now = new Date();
   const isCurrentMonth = month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth();
@@ -133,26 +86,23 @@ export default function HistoryScreen() {
     ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ];
   const today = toDayKey();
-  const shiftMonth = (amount: number) =>
-    setMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
+  const shiftMonth = (amount: number) => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
 
   return (
     <Screen>
       <TopBar title="Histórico" />
 
-      <View style={styles.periodToggle}>
+      <View style={styles.periodToggle} accessibilityRole="tablist">
         {PERIODS.map((option, index) => {
           const selected = periodIndex === index;
           return (
             <Pressable
               key={option.label}
-              accessibilityRole="button"
+              accessibilityRole="tab"
               accessibilityState={{ selected }}
               onPress={() => setPeriodIndex(index)}
               style={[styles.periodOption, selected && styles.periodOptionSelected]}>
-              <Text style={[styles.periodText, selected && styles.periodTextSelected]}>
-                {option.label}
-              </Text>
+              <Text style={[styles.periodText, selected && styles.periodTextSelected]}>{option.label}</Text>
             </Pressable>
           );
         })}
@@ -160,30 +110,29 @@ export default function HistoryScreen() {
 
       <Card style={styles.card}>
         <View style={styles.chartHeader}>
-          <Text style={styles.cardTitle}>Evolução</Text>
+          <Text style={styles.cardTitle}>Variação do humor</Text>
           <Spacer />
           <View style={styles.legend}>
-            <View style={[styles.legendDot, { backgroundColor: MenteColors.mood }]} />
+            <View style={[styles.legendDot, { backgroundColor: c.mood }]} />
             <Text style={styles.legendText}>Humor</Text>
           </View>
           <View style={styles.legend}>
-            <View style={[styles.legendDot, { backgroundColor: MenteColors.anxiety }]} />
+            <View style={[styles.legendDot, { backgroundColor: c.anxiety }]} />
             <Text style={styles.legendText}>Ansiedade</Text>
           </View>
         </View>
 
-        <View onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}>
+        <View
+          onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
+          accessible
+          accessibilityLabel={`Gráfico de linha dos últimos ${period.days} dias. ${perDay.filter((item) => item.count).length} dias com registro.`}>
           {chartWidth > 0 ? (
             <LineChart
               width={chartWidth}
               height={CHART_HEIGHT}
               series={[
-                { values: checkIns.map((item) => (item ? item.anxiety / 10 : null)), color: MenteColors.anxiety },
-                {
-                  values: checkIns.map((item) => (item ? item.mood / 4 : null)),
-                  color: MenteColors.mood,
-                  dots: true,
-                },
+                { values: perDay.map((item) => (item.anxiety === null ? null : item.anxiety / 10)), color: c.anxiety },
+                { values: perDay.map((item) => (item.mood === null ? null : (item.mood - 1) / 4)), color: c.mood, dots: true },
               ]}
             />
           ) : (
@@ -203,6 +152,7 @@ export default function HistoryScreen() {
             </Text>
           ))}
         </View>
+        <Text style={styles.caption}>Dias sem registro aparecem como lacuna na linha.</Text>
       </Card>
 
       <View style={styles.averageRow}>
@@ -210,25 +160,24 @@ export default function HistoryScreen() {
           <View key={average.label} style={styles.averageCard}>
             <Text style={styles.averageLabel}>{average.label}</Text>
             <View style={styles.averageValueRow}>
-              <Text style={styles.averageValue}>{average.value}</Text>
-              {average.delta ? (
+              <Text style={styles.averageValue}>{formatScore(average.current)}</Text>
+              {formatDelta(average.delta) ? (
                 <View style={styles.deltaPill}>
-                  <Text style={styles.deltaText}>{average.delta}</Text>
+                  <Text style={styles.deltaText}>{formatDelta(average.delta)}</Text>
                 </View>
               ) : null}
             </View>
+            <Text style={styles.caption}>
+              {average.previous === null ? `Sem dados ${average.previousLabel}` : `${formatScore(average.previous)} ${average.previousLabel}`}
+            </Text>
           </View>
         ))}
       </View>
 
-      <Card style={styles.card}>
+      <Card style={[styles.card, styles.calendarCard]}>
         <View style={styles.monthHeader}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Mês anterior"
-            hitSlop={10}
-            onPress={() => shiftMonth(-1)}>
-            <Icon name="chevronLeft" size={13} color={MenteColors.accent} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Mês anterior" onPress={() => shiftMonth(-1)} style={styles.monthButton}>
+            <Icon name="chevronLeft" size={13} color={c.accent} />
           </Pressable>
           <Text style={styles.cardTitle}>
             {MONTHS[month.getMonth()]}
@@ -239,13 +188,13 @@ export default function HistoryScreen() {
             accessibilityLabel="Próximo mês"
             accessibilityState={{ disabled: isCurrentMonth }}
             disabled={isCurrentMonth}
-            hitSlop={10}
             onPress={() => shiftMonth(1)}
-            style={isCurrentMonth && styles.disabled}>
-            <Icon name="chevronRight" size={13} color={MenteColors.accent} />
+            style={[styles.monthButton, isCurrentMonth && styles.disabled]}>
+            <Icon name="chevronRight" size={13} color={c.accent} />
           </Pressable>
         </View>
-        <Text style={styles.calendarCaption}>Humor por dia</Text>
+        <Text style={styles.caption}>Humor por dia · toque em um dia para ver os registros</Text>
+
 
         <View style={styles.calendarRow}>
           {CALENDAR_HEADINGS.map((initial, index) => (
@@ -257,281 +206,268 @@ export default function HistoryScreen() {
 
         <View style={styles.calendarGrid}>
           {calendar.map((day, index) => {
-            const key = day === null ? null : toDayKey(new Date(month.getFullYear(), month.getMonth(), day));
-            const tint = key ? tintFor(data.checkIns[key]) : null;
+            if (day === null) return <View key={`blank-${index}`} style={styles.calendarCell} />;
+            const key = toDayKey(new Date(month.getFullYear(), month.getMonth(), day));
+            const mood = dayMood(data, key);
+            const level = mood === null ? null : Math.round(mood) - 1;
             return (
-              <View
-                key={key ?? `blank-${index}`}
-                style={[
-                  styles.calendarDay,
-                  tint ? { backgroundColor: `${tint}55` } : null,
-                  key === today && styles.calendarToday,
-                ]}>
-                <Text style={styles.calendarDayText}>{day ?? ''}</Text>
+              <View key={key} style={styles.calendarCell}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${day} de ${MONTHS[month.getMonth()]}: ${level === null ? 'sem registro' : MOODS[level]}`}
+                  onPress={() => router.push({ pathname: '/day/[day]', params: { day: key } })}
+                  style={[
+                    styles.calendarDay,
+                    level !== null && { backgroundColor: c.moodScale[level] },
+                    key === today && styles.calendarToday,
+                  ]}>
+                  <Text style={[styles.calendarDayText, level !== null && styles.calendarDayTextFilled]}>{day}</Text>
+                </Pressable>
               </View>
             );
           })}
+        </View>
+
+        {/* CA-04: every colour is explained, and each fill keeps ≥ 4.5:1 with its number. */}
+        <View style={styles.scaleLegend}>
+          {MOODS.map((label, index) => (
+            <View key={label} style={styles.scaleItem}>
+              <View style={[styles.scaleSwatch, { backgroundColor: c.moodScale[index] }]} />
+              <Text style={styles.legendText}>{label}</Text>
+            </View>
+          ))}
         </View>
       </Card>
 
       <Card style={styles.card}>
         <Text style={styles.cardTitle}>Indicadores de bem-estar</Text>
-
-        <View style={styles.radarRow}>
-          <Radar indicators={indicators} />
-          <View style={styles.indicatorList}>
-            {indicators.map((indicator) => (
-              <View key={indicator.label} style={styles.indicator}>
-                <View style={[styles.legendDot, { backgroundColor: indicator.color }]} />
-                <Text style={styles.indicatorLabel}>{indicator.label}</Text>
-                <View style={styles.indicatorTrack}>
-                  <View
-                    style={[
-                      styles.indicatorFill,
-                      { width: `${indicator.percent ?? 0}%`, backgroundColor: indicator.color },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.indicatorPercent}>
-                  {indicator.percent === null ? '–' : `${indicator.percent}%`}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-        <Text style={styles.calendarCaption}>Últimos 30 dias</Text>
+        <RadarChart axes={axes} />
+        <Text style={styles.caption}>
+          Últimos 30 dias. Ansiedade e estresse: quanto maior, mais intensos. Estresse vem do teste rápido de estresse.
+        </Text>
       </Card>
 
-      <View style={styles.insights}>
-        {(insights.length ? insights : ['Faça check-ins por alguns dias para ver seus padrões aqui.']).map(
-          (insight) => (
-            <View key={insight} style={styles.insight}>
+      <Card style={styles.card}>
+        <Text style={styles.cardTitle}>Atividades e humor</Text>
+        {correlation.status === 'insufficient' ? (
+          <Text style={styles.insightText}>
+            Ainda não há correlações disponíveis. Com pelo menos {MIN_CORRELATION_DAYS} dias de check-in mostramos como suas
+            atividades se relacionam com o humor ({correlation.days} de {MIN_CORRELATION_DAYS}).
+          </Text>
+        ) : (
+          correlation.messages.map((message) => (
+            <View key={message} style={styles.insight}>
               <View style={styles.insightDot} />
-              <Text style={styles.insightText}>{insight}</Text>
+              <Text style={styles.insightText}>{message}</Text>
             </View>
-          ),
+          ))
         )}
-      </View>
+        {extra.map((message) => (
+          <View key={message} style={styles.insight}>
+            <View style={styles.insightDot} />
+            <Text style={styles.insightText}>{message}</Text>
+          </View>
+        ))}
+      </Card>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
+  periodToggle: {
+    flexDirection: 'row',
+    padding: 4,
+    gap: 4,
+    borderRadius: MenteRadius.button,
+    backgroundColor: c.surface,
+  },
+  periodOption: {
+    flex: 1,
+    minHeight: MIN_TOUCH,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: MenteRadius.chip,
+  },
+  periodOptionSelected: {
+    backgroundColor: c.primary,
+  },
+  periodText: {
+    ...MenteType.caption,
+    color: c.textMuted,
+  },
+  periodTextSelected: {
+    ...MenteType.captionStrong,
+    color: c.onPrimary,
+  },
   card: {
     gap: 12,
   },
   cardTitle: {
     ...MenteType.sectionTitle,
-    color: MenteColors.text,
+    color: c.text,
   },
-  periodToggle: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 4,
-    borderRadius: MenteRadius.row,
-    backgroundColor: MenteColors.surface,
-  },
-  periodOption: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 9,
-    borderRadius: 12,
-  },
-  periodOptionSelected: {
-    backgroundColor: MenteColors.primary,
-  },
-  periodText: {
-    ...MenteType.label,
-    color: MenteColors.textMuted,
-  },
-  periodTextSelected: {
-    ...MenteType.captionStrong,
-    color: MenteColors.onPrimary,
+  caption: {
+    ...MenteType.small,
+    color: c.textMuted,
   },
   chartHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  chartEmpty: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chartEmptyText: {
-    ...MenteType.small,
-    color: MenteColors.textMuted,
-  },
-  monthHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  disabled: {
-    opacity: 0.3,
+    gap: 10,
   },
   legend: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
   },
   legendDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   legendText: {
     ...MenteType.tiny,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
+  },
+  chartEmpty: {
+    ...({ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartEmptyText: {
+    ...MenteType.caption,
+    color: c.textMuted,
   },
   weekdayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   weekday: {
-    ...MenteType.micro,
-    color: MenteColors.textMuted,
+    ...MenteType.tiny,
+    color: c.textMuted,
   },
   averageRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 11,
   },
   averageCard: {
     flex: 1,
-    gap: 7,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: MenteRadius.row,
-    backgroundColor: MenteColors.surface,
+    gap: 6,
+    padding: 14,
+    borderRadius: MenteRadius.card,
+    backgroundColor: c.surface,
   },
   averageLabel: {
-    ...MenteType.tiny,
-    color: MenteColors.textMuted,
+    ...MenteType.small,
+    color: c.textMuted,
   },
   averageValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    flexWrap: 'wrap',
+    gap: 6,
   },
   averageValue: {
     ...MenteType.metric,
-    fontSize: 17,
-    color: MenteColors.text,
+    fontSize: 18,
+    color: c.text,
   },
   deltaPill: {
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.greenSurface,
+    backgroundColor: c.greenSurface,
   },
   deltaText: {
     ...MenteType.tinyStrong,
-    color: MenteColors.greenText,
+    color: c.greenText,
   },
-  calendarCaption: {
-    ...MenteType.tiny,
-    marginTop: -6,
-    color: MenteColors.textMuted,
+  monthHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  monthButton: {
+    width: MIN_TOUCH,
+    height: MIN_TOUCH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabled: {
+    opacity: 0.35,
+  },
+  calendarCard: {
+    paddingHorizontal: 8,
   },
   calendarRow: {
     flexDirection: 'row',
   },
   calendarHeading: {
-    ...MenteType.micro,
+    ...MenteType.tiny,
     flex: 1,
     textAlign: 'center',
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    rowGap: 4,
   },
+  calendarCell: {
+    width: `${100 / 7}%`,
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  // Full cell width up to 44 pt: 44 × 7 fits from ~370 dp wide screens.
   calendarDay: {
-    // Not `100 / 7`: the repeating decimal rounds past 100% and wraps a day early.
-    width: '14.28%',
+    width: '100%',
+    maxWidth: MIN_TOUCH,
+    aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: MIN_TOUCH / 2,
   },
   calendarToday: {
-    borderWidth: 1,
-    borderColor: MenteColors.accent,
+    borderWidth: 2,
+    borderColor: c.accent,
   },
   calendarDayText: {
-    ...MenteType.tiny,
-    color: MenteColors.text,
+    ...MenteType.caption,
+    color: c.textMuted,
   },
-  radarRow: {
+  calendarDayTextFilled: {
+    ...MenteType.captionStrong,
+    color: c.onMoodScale,
+  },
+  scaleLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 12,
+    rowGap: 6,
+  },
+  scaleItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 5,
   },
-  radar: {
-    width: RADAR_SIZE,
-    height: RADAR_SIZE,
-  },
-  radarRing: {
-    position: 'absolute',
-    borderWidth: 1,
-    borderColor: MenteColors.border,
-  },
-  radarDot: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  indicatorList: {
-    flex: 1,
-    gap: 6,
-  },
-  indicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  indicatorLabel: {
-    ...MenteType.tiny,
-    width: 46,
-    color: MenteColors.text,
-  },
-  indicatorTrack: {
-    flex: 1,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: MenteColors.background,
-  },
-  indicatorFill: {
-    height: 5,
-    borderRadius: 2.5,
-  },
-  indicatorPercent: {
-    ...MenteType.tiny,
-    width: 30,
-    textAlign: 'right',
-    color: MenteColors.textMuted,
-  },
-  insights: {
-    gap: 8,
-    paddingHorizontal: 4,
+  scaleSwatch: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
   },
   insight: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+    gap: 10,
   },
   insightDot: {
     width: 6,
     height: 6,
-    marginTop: 6,
     borderRadius: 3,
-    backgroundColor: MenteColors.primary,
+    marginTop: 7,
+    backgroundColor: c.accent,
   },
   insightText: {
-    ...MenteType.small,
+    ...MenteType.body,
     flex: 1,
-    color: MenteColors.textMuted,
+    color: c.text,
   },
-});
+}));

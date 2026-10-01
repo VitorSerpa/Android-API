@@ -1,22 +1,16 @@
-import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Card, IconBubble, Input, TopBar } from '@/components/mente/ui';
-import { MenteColors, MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
+import { MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
 import { useUserData } from '@/data/user-data-context';
 import { confirm } from '@/lib/dialogs';
 import { call } from '@/lib/phone';
+import { makeStyles } from '@/theme';
 
 export default function ContactsScreen() {
+  const styles = useStyles();
   const { data, actions } = useUserData();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -37,7 +31,6 @@ export default function ContactsScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="dark" />
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -109,10 +102,10 @@ export default function ContactsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   screen: {
     flex: 1,
-    backgroundColor: MenteColors.background,
+    backgroundColor: c.background,
   },
   flex: {
     flex: 1,
@@ -125,18 +118,18 @@ const styles = StyleSheet.create({
   },
   intro: {
     ...MenteType.caption,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   card: {
     gap: 12,
   },
   cardTitle: {
     ...MenteType.sectionTitle,
-    color: MenteColors.text,
+    color: c.text,
   },
   empty: {
     ...MenteType.small,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   contact: {
     flexDirection: 'row',
@@ -150,27 +143,27 @@ const styles = StyleSheet.create({
   contactName: {
     ...MenteType.body,
     fontFamily: MenteType.captionStrong.fontFamily,
-    color: MenteColors.text,
+    color: c.text,
   },
   contactDetail: {
     ...MenteType.caption,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   remove: {
     ...MenteType.link,
-    color: MenteColors.dangerText,
+    color: c.dangerText,
   },
   callButton: {
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.primary,
+    backgroundColor: c.primary,
   },
   callButtonText: {
     ...MenteType.captionStrong,
-    color: MenteColors.onPrimary,
+    color: c.onPrimary,
   },
   pressed: {
     opacity: 0.75,
   },
-});
+}));

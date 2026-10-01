@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 
 import { AuthError, useAuth } from '@/auth';
 import { validateEmail } from '@/auth/validation';
 import { AuthScreen } from '@/components/mente/auth-screen';
 import { TextField } from '@/components/mente/text-field';
-import { MenteColors, MenteType } from '@/constants/mente-theme';
+import { MenteType } from '@/constants/mente-theme';
 import { notify } from '@/lib/dialogs';
+import { makeStyles } from '@/theme';
 
 export default function SignInScreen() {
+  const styles = useStyles();
   const { signIn, resetPassword } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -108,12 +110,12 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   forgot: {
     alignSelf: 'flex-end',
   },
   forgotText: {
     ...MenteType.captionStrong,
-    color: MenteColors.accent,
+    color: c.accent,
   },
-});
+}));

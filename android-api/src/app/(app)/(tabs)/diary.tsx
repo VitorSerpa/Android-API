@@ -1,214 +1,247 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
+import { AudioClip, AudioRecorderPanel } from '@/components/mente/audio';
+import { ChoiceChips } from '@/components/mente/fields';
 import { Icon } from '@/components/mente/icon';
 import { Screen } from '@/components/mente/screen';
-import { Card, SectionHeader, Spacer, TopBar } from '@/components/mente/ui';
-import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
+import { Button, Card, Input, MIN_TOUCH, SectionHeader, Spacer, TopBar } from '@/components/mente/ui';
+import { MenteRadius, MenteType } from '@/constants/mente-theme';
 import { wordCount } from '@/data/insights';
-import {
-  COLLECTIONS,
-  LIFE_PROFILES,
-  type Collection,
-  type DiaryEntry,
-  type LifeProfile,
-} from '@/data/types';
+import { DREAM_EMOTIONS, type DiaryEntry, type DiaryKind, type DreamEmotion } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
-import { formatDayMonth, formatShortDate, fromDayKey, toDayKey } from '@/lib/dates';
-import { comingSoon, confirm } from '@/lib/dialogs';
+import { useAutosave } from '@/hooks/use-autosave';
+import { formatDayMonth, formatShortDate, formatTime, fromDayKey, toDayKey } from '@/lib/dates';
+import { choose, confirm } from '@/lib/dialogs';
+import { deleteMediaFile, keepRecording, pickPhoto } from '@/lib/media';
+import { makeStyles, useColors } from '@/theme';
 
-const AUTOSAVE_MS = 700;
-const RECENT_COUNT = 3;
+const RECENT_COUNT = 4;
 
-const COLLECTION_STYLE: Record<Collection, { background: string; color: string }> = {
-  Gratidão: { background: MenteColors.greenSurface, color: MenteColors.greenText },
-  Sonhos: { background: MenteColors.purpleSurface, color: MenteColors.purpleText },
-};
+const KINDS: readonly { kind: DiaryKind; label: string }[] = [
+  { kind: 'free', label: 'Escrita livre' },
+  { kind: 'gratitude', label: 'Gratidão' },
+  { kind: 'dream', label: 'Sonhos' },
+];
 
-const PROFILE_COLOR: Record<LifeProfile, string> = {
-  Trabalho: MenteColors.primary,
-  Lazer: MenteColors.mood,
-  Família: MenteColors.energy,
-};
-
-type Target = { id: string | null; day: string; profile: LifeProfile };
-type SaveStatus = 'idle' | 'saving' | 'saved';
+const KIND_LABEL: Record<DiaryKind, string> = { free: 'Livre', gratitude: 'Gratidão', dream: 'Sonho' };
 
 export default function DiaryScreen() {
-  const { data, actions } = useUserData();
-  const today = toDayKey();
-
-  const findToday = (profile: LifeProfile) =>
-    data.diary.find((entry) => entry.day === today && entry.profile === profile);
-
-  const [target, setTarget] = useState<Target>(() => ({
-    id: findToday(LIFE_PROFILES[0])?.id ?? null,
-    day: today,
-    profile: LIFE_PROFILES[0],
-  }));
-  const initial = target.id ? data.diary.find((entry) => entry.id === target.id) : undefined;
-  const [text, setText] = useState(initial?.text ?? '');
-  const [collections, setCollections] = useState<Collection[]>(initial?.collections ?? []);
-  const [status, setStatus] = useState<SaveStatus>('idle');
-  const [focusMode, setFocusMode] = useState(false);
-  const [showAll, setShowAll] = useState(false);
-
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** The save waiting on the debounce, so switching entries can flush it first. */
-  const pending = useRef<(() => void) | null>(null);
-
-  const persist = (nextText: string, nextCollections: Collection[], at: Target) => {
-    // Don't create empty entries just because the editor was focused.
-    if (!at.id && !nextText.trim()) {
-      setStatus('idle');
-      return;
-    }
-    const id = actions.saveDiaryEntry({
-      id: at.id ?? undefined,
-      day: at.day,
-      profile: at.profile,
-      text: nextText,
-      collections: nextCollections,
-    });
-    if (!at.id) setTarget((current) => (current === at ? { ...at, id } : current));
-    setStatus('saved');
-  };
-
-  const schedule = (nextText: string, nextCollections: Collection[]) => {
-    setStatus('saving');
-    if (timer.current) clearTimeout(timer.current);
-    const at = target;
-    pending.current = () => persist(nextText, nextCollections, at);
-    timer.current = setTimeout(() => {
-      pending.current?.();
-      pending.current = null;
-    }, AUTOSAVE_MS);
-  };
-
-  const flush = () => {
-    if (timer.current) clearTimeout(timer.current);
-    pending.current?.();
-    pending.current = null;
-  };
-
-  // Leaving the tab must not drop the last few keystrokes.
-  useEffect(() => flush, []);
-
-  const open = (entry: DiaryEntry | undefined, profile: LifeProfile) => {
-    flush();
-    setTarget({ id: entry?.id ?? null, day: entry?.day ?? today, profile: entry?.profile ?? profile });
-    setText(entry?.text ?? '');
-    setCollections(entry?.collections ?? []);
-    setStatus('idle');
-  };
-
-  const onChangeText = (value: string) => {
-    setText(value);
-    schedule(value, collections);
-  };
-
-  const toggleCollection = (collection: Collection) => {
-    const next = collections.includes(collection)
-      ? collections.filter((item) => item !== collection)
-      : [...collections, collection];
-    setCollections(next);
-    schedule(text, next);
-  };
-
-  const remove = async (entry: DiaryEntry) => {
-    const ok = await confirm('Apagar entrada', 'Esta entrada do diário será apagada.', 'Apagar');
-    if (!ok) return;
-    actions.deleteDiaryEntry(entry.id);
-    if (entry.id === target.id) open(undefined, target.profile);
-  };
-
-  const isToday = target.day === today;
-  const heading = isToday
-    ? `Hoje, ${formatDayMonth(fromDayKey(today))}`
-    : formatDayMonth(fromDayKey(target.day));
-
-  const entries = [...data.diary]
-    .filter((entry) => entry.text.trim())
-    .sort((a, b) => b.day.localeCompare(a.day) || b.updatedAt.localeCompare(a.updatedAt));
-  const visibleEntries = showAll ? entries : entries.slice(0, RECENT_COUNT);
+  const styles = useStyles();
+  const [kind, setKind] = useState<DiaryKind>('free');
 
   return (
     <Screen>
-      <TopBar
-        title="Diário"
-        right={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: focusMode }}
-            onPress={() => setFocusMode((value) => !value)}
-            style={({ pressed }) => [styles.fullscreenChip, pressed && styles.pressed]}>
-            <Icon name="expand" size={14} color={MenteColors.accent} />
-            <Text style={styles.fullscreenText}>{focusMode ? 'Sair' : 'Tela cheia'}</Text>
-          </Pressable>
-        }
-      />
+      <TopBar title="Diário" />
+      <View style={styles.segmented} accessibilityRole="tablist">
+        {KINDS.map((item) => {
+          const selected = item.kind === kind;
+          return (
+            <Pressable
+              key={item.kind}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => setKind(item.kind)}
+              style={[styles.segment, selected && styles.segmentOn]}>
+              <Text style={[styles.segmentText, selected && styles.segmentTextOn]}>{item.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
-      {!focusMode ? (
-        <View style={styles.profileRow}>
-          {LIFE_PROFILES.map((name) => {
-            const selected = target.profile === name;
-            return (
-              <Pressable
-                key={name}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => !selected && open(findToday(name), name)}
-                style={[styles.profileTag, selected && styles.profileTagSelected]}>
-                <Text style={[styles.profileTagText, selected && styles.profileTagTextSelected]}>
-                  {name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
+      {kind === 'free' ? <FreeWriting /> : kind === 'gratitude' ? <GratitudeForm /> : <DreamForm />}
+      <RecentEntries />
+    </Screen>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Escrita livre (RF-06, RF-09, RF-10, RF-11)                          */
+/* ------------------------------------------------------------------ */
+
+function latestFreeToday(entries: DiaryEntry[]) {
+  const today = toDayKey();
+  return entries
+    .filter((entry) => entry.kind === 'free' && entry.day === today)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+}
+
+function FreeWriting() {
+  const styles = useStyles();
+  const c = useColors();
+  const router = useRouter();
+  const { data, actions } = useUserData();
+
+  // CA-02: reopening the app brings back the entry written last.
+  const [entryId, setEntryId] = useState<string | null>(() => latestFreeToday(data.diary)?.id ?? null);
+  const entry = entryId ? data.diary.find((item) => item.id === entryId) : undefined;
+  const [text, setText] = useState(entry?.text ?? '');
+  const [profileId, setProfileId] = useState<string | null>(entry?.profileId ?? data.profiles[0]?.id ?? null);
+  const [dirty, setDirty] = useState(false);
+  const [recording, setRecording] = useState(false);
+
+  /** Persists the text; creates the entry the first time. Returns its id. */
+  const persist = useCallback(
+    (force = false) => {
+      if (!force && !dirty) return entryId;
+      if (!entryId && !text.trim() && !force) return null;
+      const id = actions.saveDiaryEntry({
+        id: entryId ?? undefined,
+        day: entry?.day ?? toDayKey(),
+        kind: 'free',
+        profileId,
+        text,
+        gratitude: null,
+        dreamEmotion: null,
+        attachments: entry?.attachments ?? [],
+      });
+      setEntryId(id);
+      setDirty(false);
+      return id;
+    },
+    [actions, dirty, entry, entryId, profileId, text],
+  );
+
+  useAutosave(dirty, () => persist());
+
+  // Coming back from the full-screen editor: show what was written there.
+  useFocusEffect(
+    useCallback(() => {
+      if (!dirty && entry && entry.text !== text) setText(entry.text);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [entry?.updatedAt]),
+  );
+
+  const open = (next: DiaryEntry | null) => {
+    persist();
+    setEntryId(next?.id ?? null);
+    setText(next?.text ?? '');
+    setProfileId(next?.profileId ?? data.profiles[0]?.id ?? null);
+    setDirty(false);
+  };
+
+  const ensureEntry = () => persist(true) as string;
+
+  const addPhoto = async () => {
+    const source = await choose('Anexar foto', [
+      { value: 'camera', label: 'Tirar foto' },
+      { value: 'library', label: 'Escolher da galeria' },
+    ]);
+    if (!source) return;
+    const attachment = await pickPhoto(source).catch(() => null);
+    if (attachment) actions.addAttachment(ensureEntry(), attachment);
+  };
+
+  const removeAttachment = async (attachmentId: string, uri: string) => {
+    if (!entryId) return;
+    if (!(await confirm('Remover anexo', 'O anexo será removido deste registro.', 'Remover'))) return;
+    actions.removeAttachment(entryId, attachmentId);
+    deleteMediaFile(uri);
+  };
+
+  const heading = entry && entry.day !== toDayKey() ? formatDayMonth(fromDayKey(entry.day)) : `Hoje, ${formatDayMonth(new Date())}`;
+
+  return (
+    <>
+      <ChoiceChips
+        label="Perfil de vida da entrada"
+        options={data.profiles.map((profile) => profile.id)}
+        renderLabel={(id) => data.profiles.find((profile) => profile.id === id)?.name ?? id}
+        selected={profileId ? [profileId] : []}
+        onToggle={(id) => {
+          setProfileId(id);
+          setDirty(true);
+        }}
+      />
 
       <Card style={styles.editorCard}>
         <View style={styles.editorHeader}>
           <Text style={styles.editorDate}>{heading}</Text>
           <Spacer />
-          {status !== 'idle' ? (
-            <View style={styles.savingRow}>
-              <View style={[styles.savingDot, status === 'saving' && styles.savingDotBusy]} />
-              <Text style={[styles.savingText, status === 'saving' && styles.savingTextBusy]}>
-                {status === 'saving' ? 'Salvando…' : 'Salvo'}
-              </Text>
-            </View>
-          ) : null}
+          <Text style={[styles.savingText, dirty && styles.savingTextBusy]} accessibilityLiveRegion="polite">
+            {dirty ? 'Salvamento automático em até 30 s' : entry ? `Salvo às ${formatTime(new Date(entry.updatedAt))}` : ''}
+          </Text>
         </View>
 
         <TextInput
           multiline
           accessibilityLabel="Texto do diário"
           placeholder="Como foi o seu dia? Escreva livremente…"
-          placeholderTextColor={MenteColors.textMuted}
+          placeholderTextColor={c.textMuted}
           value={text}
-          onChangeText={onChangeText}
-          onBlur={flush}
-          style={[styles.editorBody, focusMode && styles.editorBodyFocus]}
+          onChangeText={(value) => {
+            setText(value);
+            setDirty(true);
+          }}
+          onBlur={() => persist()}
+          style={styles.editorBody}
         />
+
+        {entry?.attachments.length ? (
+          <View style={styles.attachments}>
+            {entry.attachments.map((attachment) =>
+              attachment.kind === 'photo' ? (
+                <View key={attachment.id} style={styles.photoWrap}>
+                  <Image source={{ uri: attachment.uri }} style={styles.photo} contentFit="cover" accessibilityLabel="Foto anexada" />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Remover foto"
+                    onPress={() => removeAttachment(attachment.id, attachment.uri)}
+                    style={styles.photoRemove}>
+                    <View style={styles.photoRemoveBadge}>
+                      <Icon name="close" size={10} color={c.onPrimary} />
+                    </View>
+                  </Pressable>
+                </View>
+              ) : (
+                <AudioClip
+                  key={attachment.id}
+                  uri={attachment.uri}
+                  durationSec={attachment.durationSec}
+                  onRemove={() => removeAttachment(attachment.id, attachment.uri)}
+                />
+              ),
+            )}
+          </View>
+        ) : null}
+
+        {recording ? (
+          <AudioRecorderPanel
+            onRecorded={(uri, duration) => {
+              setRecording(false);
+              actions.addAttachment(ensureEntry(), keepRecording(uri, duration));
+            }}
+            onCancel={() => setRecording(false)}
+          />
+        ) : null}
 
         <View style={styles.divider} />
 
         <View style={styles.attachmentRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => comingSoon('Anexar foto')}
-            style={({ pressed }) => [styles.attachment, pressed && styles.pressed]}>
-            <Icon name="photo" size={15} color={MenteColors.accent} cutColor={MenteColors.background} />
+          <Pressable accessibilityRole="button" onPress={addPhoto} style={({ pressed }) => [styles.attachment, pressed && styles.pressed]}>
+            <Icon name="photo" size={15} color={c.accent} cutColor={c.background} />
             <Text style={styles.attachmentText}>Foto</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            onPress={() => comingSoon('Gravar áudio')}
+            onPress={() => setRecording(true)}
+            disabled={recording}
             style={({ pressed }) => [styles.attachment, pressed && styles.pressed]}>
-            <Icon name="mic" size={15} color={MenteColors.accent} />
+            <Icon name="mic" size={15} color={c.accent} />
             <Text style={styles.attachmentText}>Áudio</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityHint="Abre o modo de escrita em tela cheia"
+            onPress={() => {
+              const id = persist(Boolean(text.trim()));
+              router.push({ pathname: '/diary-focus', params: id ? { id } : { profileId: profileId ?? '' } });
+            }}
+            style={({ pressed }) => [styles.attachment, pressed && styles.pressed]}>
+            <Icon name="expand" size={14} color={c.accent} />
+            <Text style={styles.attachmentText}>Tela cheia</Text>
           </Pressable>
           <Spacer />
           <Text style={styles.wordCount}>
@@ -216,280 +249,352 @@ export default function DiaryScreen() {
           </Text>
         </View>
 
-        {!isToday ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => open(findToday(target.profile), target.profile)}
-            hitSlop={8}>
-            <Text style={styles.backToToday}>← Voltar para a entrada de hoje</Text>
+        {entry ? (
+          <Pressable accessibilityRole="button" onPress={() => open(null)} style={styles.linkButton}>
+            <Text style={styles.link}>+ Nova entrada</Text>
           </Pressable>
         ) : null}
       </Card>
 
-      {!focusMode ? (
-        <>
-          <View style={styles.collectionRow}>
-            {COLLECTIONS.map((collection) => {
-              const style = COLLECTION_STYLE[collection];
-              const selected = collections.includes(collection);
-              const count = data.diary.filter((entry) => entry.collections.includes(collection)).length;
-              return (
-                <Pressable
-                  key={collection}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected }}
-                  accessibilityHint="Marca a entrada aberta com esta coleção"
-                  onPress={() => toggleCollection(collection)}
-                  style={({ pressed }) => [
-                    styles.collection,
-                    { backgroundColor: style.background },
-                    selected && { borderColor: style.color },
-                    pressed && styles.pressed,
-                  ]}>
-                  <Text style={[styles.collectionTitle, { color: style.color }]}>
-                    {selected ? '✓ ' : ''}
-                    {collection}
-                  </Text>
-                  <Text style={[styles.collectionDetail, { color: style.color }]}>
-                    {count} {count === 1 ? 'registro' : 'registros'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.entries}>
-            <SectionHeader
-              title="Entradas recentes"
-              action={entries.length > RECENT_COUNT ? (showAll ? 'Ver menos' : 'Ver todas') : undefined}
-              onPressAction={() => setShowAll((value) => !value)}
-            />
-
-            {visibleEntries.length === 0 ? (
-              <Text style={styles.empty}>Suas entradas aparecem aqui assim que você escrever.</Text>
-            ) : null}
-
-            {visibleEntries.map((entry) => (
-              <Pressable
-                key={entry.id}
-                accessibilityRole="button"
-                accessibilityHint="Toque para abrir, segure para apagar"
-                onPress={() => open(entry, entry.profile)}
-                onLongPress={() => remove(entry)}
-                style={({ pressed }) => [
-                  styles.entry,
-                  entry.id === target.id && styles.entryActive,
-                  pressed && styles.pressed,
-                ]}>
-                <View style={[styles.entryBar, { backgroundColor: PROFILE_COLOR[entry.profile] }]} />
-                <View style={styles.entryText}>
-                  <View style={styles.entryMeta}>
-                    <Text style={styles.entryDate}>{formatShortDate(fromDayKey(entry.day))}</Text>
-                    <View style={styles.entryTag}>
-                      <Text style={styles.entryTagText}>{entry.profile}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.entryExcerpt} numberOfLines={2}>
-                    {entry.text.trim()}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        </>
-      ) : null}
-    </Screen>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  pressed: {
-    opacity: 0.75,
-  },
-  fullscreenChip: {
+/* ------------------------------------------------------------------ */
+/* Gratidão (RF-07 / CA-03)                                            */
+/* ------------------------------------------------------------------ */
+
+function GratitudeForm() {
+  const styles = useStyles();
+  const { data, actions } = useUserData();
+  const today = toDayKey();
+  const existing = data.diary.find((entry) => entry.kind === 'gratitude' && entry.day === today);
+  const [items, setItems] = useState<[string, string, string]>(existing?.gratitude ?? ['', '', '']);
+  const [saved, setSaved] = useState(false);
+  const complete = items.every((item) => item.trim().length > 0);
+
+  const save = () => {
+    if (!complete) return;
+    actions.saveDiaryEntry({
+      id: existing?.id,
+      day: today,
+      kind: 'gratitude',
+      profileId: null,
+      text: items.map((item) => item.trim()).join('\n'),
+      gratitude: items.map((item) => item.trim()) as [string, string, string],
+      dreamEmotion: null,
+      attachments: existing?.attachments ?? [],
+    });
+    setSaved(true);
+  };
+
+  return (
+    <Card style={styles.card}>
+      <Text style={styles.cardTitle}>Três coisas boas de hoje</Text>
+      <Text style={styles.detail}>Pequenas ou grandes — o que fez seu dia um pouco melhor?</Text>
+      {items.map((item, index) => (
+        <Input
+          key={index}
+          accessibilityLabel={`Coisa boa ${index + 1}`}
+          placeholder={`${index + 1}. ${['Um momento', 'Uma pessoa', 'Algo que aprendi'][index]}…`}
+          value={item}
+          onChangeText={(value) => {
+            setSaved(false);
+            setItems((current) => current.map((old, i) => (i === index ? value : old)) as [string, string, string]);
+          }}
+        />
+      ))}
+      <Button label={existing ? 'Atualizar gratidão de hoje' : 'Salvar gratidão'} onPress={save} disabled={!complete} />
+      <Text style={[styles.detail, saved && styles.success]} accessibilityLiveRegion="polite">
+        {saved ? '✓ Gratidão salva.' : complete ? '' : 'Preencha os três campos para salvar.'}
+      </Text>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sonhos (RF-08)                                                      */
+/* ------------------------------------------------------------------ */
+
+function DreamForm() {
+  const styles = useStyles();
+  const { data, actions } = useUserData();
+  const [text, setText] = useState('');
+  const [emotion, setEmotion] = useState<DreamEmotion | null>(null);
+  const canSave = text.trim().length > 0 && emotion !== null;
+
+  const save = () => {
+    if (!canSave) return;
+    actions.saveDiaryEntry({
+      day: toDayKey(),
+      kind: 'dream',
+      profileId: null,
+      text: text.trim(),
+      gratitude: null,
+      dreamEmotion: emotion,
+      attachments: [],
+    });
+    setText('');
+    setEmotion(null);
+  };
+
+  const dreams = data.diary.filter((entry) => entry.kind === 'dream').length;
+
+  return (
+    <Card style={styles.card}>
+      <Text style={styles.cardTitle}>Diário de sonhos</Text>
+      <Input multiline accessibilityLabel="Descrição do sonho" placeholder="Com o que você sonhou?" value={text} onChangeText={setText} />
+      <Text style={styles.fieldLabel}>Que emoção o sonho trouxe?</Text>
+      <ChoiceChips label="Emoção do sonho" options={DREAM_EMOTIONS} selected={emotion ? [emotion] : []} onToggle={setEmotion} />
+      <Button label="Salvar sonho" onPress={save} disabled={!canSave} />
+      <Text style={styles.detail}>
+        {canSave ? '' : 'Descreva o sonho e escolha uma emoção para salvar.'} {dreams ? `${dreams} sonhos registrados.` : ''}
+      </Text>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Entradas recentes                                                   */
+/* ------------------------------------------------------------------ */
+
+function RecentEntries() {
+  const styles = useStyles();
+  const router = useRouter();
+  const { data, actions } = useUserData();
+  const [showAll, setShowAll] = useState(false);
+
+  const entries = [...data.diary]
+    .filter((entry) => entry.text.trim() || entry.attachments.length)
+    .sort((a, b) => b.day.localeCompare(a.day) || b.updatedAt.localeCompare(a.updatedAt));
+  const visible = showAll ? entries : entries.slice(0, RECENT_COUNT);
+
+  const remove = async (entry: DiaryEntry) => {
+    if (!(await confirm('Apagar entrada', 'Esta entrada do diário e seus anexos serão apagados.', 'Apagar'))) return;
+    entry.attachments.forEach((attachment) => deleteMediaFile(attachment.uri));
+    actions.deleteDiaryEntry(entry.id);
+  };
+
+  return (
+    <View style={styles.entries}>
+      <SectionHeader
+        title="Entradas recentes"
+        action={entries.length > RECENT_COUNT ? (showAll ? 'Ver menos' : 'Ver todas') : undefined}
+        onPressAction={() => setShowAll((value) => !value)}
+      />
+      {visible.length === 0 ? <Text style={styles.detail}>Suas entradas aparecem aqui assim que você escrever.</Text> : null}
+      {visible.map((entry) => (
+        <Pressable
+          key={entry.id}
+          accessibilityRole="button"
+          accessibilityHint={entry.kind === 'free' ? 'Toque para abrir em tela cheia, segure para apagar' : 'Segure para apagar'}
+          onPress={() => entry.kind === 'free' && router.push({ pathname: '/diary-focus', params: { id: entry.id } })}
+          onLongPress={() => remove(entry)}
+          style={({ pressed }) => [styles.entry, pressed && styles.pressed]}>
+          <View style={styles.entryText}>
+            <View style={styles.entryMeta}>
+              <Text style={styles.entryDate}>{formatShortDate(fromDayKey(entry.day))}</Text>
+              <View style={styles.entryTag}>
+                <Text style={styles.entryTagText}>
+                  {KIND_LABEL[entry.kind]}
+                  {entry.dreamEmotion ? ` · ${entry.dreamEmotion}` : ''}
+                  {entry.profileId ? ` · ${data.profiles.find((profile) => profile.id === entry.profileId)?.name ?? ''}` : ''}
+                </Text>
+              </View>
+              {entry.attachments.length ? (
+                <Text style={styles.entryDate}>
+                  {entry.attachments.length} anexo{entry.attachments.length > 1 ? 's' : ''}
+                </Text>
+              ) : null}
+            </View>
+            <Text style={styles.entryExcerpt} numberOfLines={2}>
+              {entry.kind === 'gratitude' ? entry.gratitude?.join(' · ') : entry.text.trim()}
+            </Text>
+          </View>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+const PHOTO = 88;
+
+const useStyles = makeStyles((c) => ({
+  segmented: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.surface,
+    padding: 4,
+    gap: 4,
+    borderRadius: MenteRadius.button,
+    backgroundColor: c.surface,
   },
-  fullscreenText: {
-    ...MenteType.link,
-    color: MenteColors.accent,
-  },
-  profileRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  profileTag: {
+  segment: {
     flex: 1,
+    minHeight: MIN_TOUCH,
     alignItems: 'center',
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.surface,
+    justifyContent: 'center',
+    borderRadius: MenteRadius.chip,
   },
-  profileTagSelected: {
-    backgroundColor: MenteColors.primary,
+  segmentOn: {
+    backgroundColor: c.primary,
   },
-  profileTagText: {
+  segmentText: {
+    ...MenteType.caption,
+    color: c.textMuted,
+  },
+  segmentTextOn: {
+    ...MenteType.captionStrong,
+    color: c.onPrimary,
+  },
+  card: {
+    gap: 12,
+  },
+  cardTitle: {
+    ...MenteType.sectionTitle,
+    color: c.text,
+  },
+  fieldLabel: {
+    ...MenteType.captionStrong,
+    color: c.text,
+  },
+  detail: {
     ...MenteType.small,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
-  profileTagTextSelected: {
-    ...MenteType.smallStrong,
-    color: MenteColors.onPrimary,
+  success: {
+    color: c.greenText,
   },
   editorCard: {
-    gap: 10,
-    paddingTop: 16,
-    paddingBottom: 14,
+    gap: 12,
   },
   editorHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   editorDate: {
-    ...MenteType.smallStrong,
-    color: MenteColors.textMuted,
-  },
-  savingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  savingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: MenteColors.mood,
-  },
-  savingDotBusy: {
-    backgroundColor: MenteColors.anxiety,
+    ...MenteType.label,
+    color: c.accent,
   },
   savingText: {
     ...MenteType.tiny,
-    color: MenteColors.mood,
+    color: c.greenText,
   },
   savingTextBusy: {
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   editorBody: {
     ...MenteType.body,
-    lineHeight: 22,
-    minHeight: 110,
+    minHeight: 140,
     padding: 0,
     textAlignVertical: 'top',
-    color: MenteColors.text,
+    color: c.text,
   },
-  editorBodyFocus: {
-    minHeight: 380,
+  attachments: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  backToToday: {
-    ...MenteType.link,
-    color: MenteColors.accent,
+  photoWrap: {
+    width: PHOTO,
+    height: PHOTO,
+  },
+  photo: {
+    width: PHOTO,
+    height: PHOTO,
+    borderRadius: MenteRadius.chip,
+  },
+  photoRemove: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: MIN_TOUCH,
+    height: MIN_TOUCH,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    padding: 6,
+  },
+  photoRemoveBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: c.primary,
   },
   divider: {
     height: 1,
-    backgroundColor: MenteColors.border,
+    backgroundColor: c.border,
   },
   attachmentRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
   attachment: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 6,
+    minHeight: MIN_TOUCH,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.background,
+    borderRadius: MenteRadius.chip,
+    backgroundColor: c.background,
   },
   attachmentText: {
-    ...MenteType.link,
-    color: MenteColors.accent,
+    ...MenteType.captionStrong,
+    color: c.accent,
   },
   wordCount: {
     ...MenteType.tiny,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
-  collectionRow: {
-    flexDirection: 'row',
-    gap: 11,
+  linkButton: {
+    minHeight: MIN_TOUCH,
+    justifyContent: 'center',
   },
-  collection: {
-    flex: 1,
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderRadius: MenteRadius.tinted,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  collectionTitle: {
+  link: {
     ...MenteType.captionStrong,
-  },
-  collectionDetail: {
-    ...MenteType.link,
-    fontFamily: MenteType.tiny.fontFamily,
-    fontSize: 11,
+    color: c.accent,
   },
   entries: {
     gap: 9,
   },
-  empty: {
-    ...MenteType.small,
-    color: MenteColors.textMuted,
-  },
   entry: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    minHeight: MIN_TOUCH,
+    padding: 12,
     borderRadius: MenteRadius.row,
-    backgroundColor: MenteColors.surface,
-  },
-  entryActive: {
-    borderWidth: 1,
-    borderColor: MenteColors.primary,
-  },
-  entryBar: {
-    width: 3,
-    height: 34,
-    borderRadius: 2,
+    backgroundColor: c.surface,
   },
   entryText: {
     flex: 1,
-    gap: 3,
+    gap: 5,
   },
   entryMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   entryDate: {
-    ...MenteType.link,
-    fontFamily: MenteType.captionStrong.fontFamily,
-    color: MenteColors.text,
+    ...MenteType.tiny,
+    color: c.textMuted,
   },
   entryTag: {
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.background,
+    backgroundColor: c.background,
   },
   entryTagText: {
-    ...MenteType.micro,
-    color: MenteColors.textMuted,
+    ...MenteType.tiny,
+    color: c.accent,
   },
   entryExcerpt: {
-    ...MenteType.small,
-    lineHeight: 16,
-    color: MenteColors.textMuted,
+    ...MenteType.caption,
+    color: c.text,
   },
-});
+  pressed: {
+    opacity: 0.75,
+  },
+}));

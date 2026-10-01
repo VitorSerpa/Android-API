@@ -1,38 +1,42 @@
-# Welcome to your Expo app 👋
+# Mente Equilibrada
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+App Android (Expo SDK 57 / React Native 0.86) de autocuidado emocional: check-ins de humor, diário com fotos e áudios, saúde física, lembretes e medicamentos, histórico com gráficos, respiração e meditação, modo de emergência, PIN, modo offline, relatórios em PDF, metas e autoavaliações, personalização e uma comunidade anônima de apoio. O backend (grupos em tempo real e convites para pessoa de confiança) fica em [`../server`](../server/README.md).
 
-## Get started
+## Rodando
 
-1. Install dependencies
+```bash
+npm install
+cp .env.example .env.local   # e preencha (veja abaixo)
+npx expo run:android          # build de desenvolvimento no emulador/aparelho
+npm run web                   # prévia web (sem recursos nativos)
+```
 
-   ```bash
-   npm install
-   ```
+Recursos nativos — notificações, câmera, microfone, GPS, SQLite, PDF, Health Connect — exigem o build de desenvolvimento (`expo-dev-client`); não funcionam no Expo Go nem por completo na web. Depois de mudar `app.json` ou instalar módulos nativos, rode `npx expo prebuild --clean` ou um novo `npx expo run:android`.
 
-2. Start the app
+Verificações:
 
-   ```bash
-   npx expo start
-   ```
+```bash
+npx tsc --noEmit        # tipos
+npm run lint            # ESLint
+npm run check:contrast  # contraste ≥ 4.5:1 em todas as paletas (RNF-04)
+```
 
-In the output, you'll find options to open the app in a
+## Variáveis de ambiente (`.env.local`)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+| Variável | Para quê |
+|---|---|
+| `EXPO_PUBLIC_FIREBASE_*` | Login por e-mail e senha (Firebase Authentication). |
+| `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` | Opcional: usa o Auth Emulator local. |
+| `EXPO_PUBLIC_API_URL` | Servidor de `../server` (grupos e convites). No emulador Android: `http://10.0.2.2:3000`. |
+| `EXPO_PUBLIC_SPOTIFY_CLIENT_ID` | Opcional: conexão com o Spotify (OAuth com PKCE). Cadastre o redirect `androidapi://spotify-auth` no app do Spotify. |
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+As variáveis `EXPO_PUBLIC_*` são lidas quando o Metro inicia — reinicie-o depois de editar.
 
-## Login (Firebase Authentication)
-
-O login usa e-mail e senha do [Firebase Authentication](https://firebase.google.com/docs/auth) via Firebase JS SDK (Android, iOS e web).
+### Login (Firebase Authentication)
 
 1. No [Console do Firebase](https://console.firebase.google.com), crie um projeto e adicione um **app Web**.
 2. Em **Authentication → Método de login**, ative **E-mail/senha**.
-3. Copie `.env.example` para `.env.local` e preencha com a configuração do app Web.
-4. Reinicie o Metro (`npx expo start`) — variáveis `EXPO_PUBLIC_*` são lidas na inicialização.
+3. Preencha as variáveis `EXPO_PUBLIC_FIREBASE_*` em `.env.local`.
 
 Para desenvolver sem um projeto real, use o emulador local:
 
@@ -41,36 +45,17 @@ npx firebase-tools emulators:start --only auth --project demo-mente
 adb reverse tcp:9099 tcp:9099   # só para o emulador Android
 ```
 
-e em `.env.local` use `EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-mente`, qualquer `EXPO_PUBLIC_FIREBASE_API_KEY` e `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`. A interface do emulador (http://127.0.0.1:4000) mostra as contas criadas e os links de redefinição de senha.
+e em `.env.local` use `EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-mente`, qualquer `EXPO_PUBLIC_FIREBASE_API_KEY` e `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`.
 
-Toda a autenticação passa por `src/auth/service.ts`; as telas só conhecem a interface `AuthService`.
+## Organização do código
 
-## Get a fresh project
+| Pasta | Camada | Conteúdo |
+|---|---|---|
+| `src/app/` | Apresentação | Telas (Expo Router). `(app)/` só abre logado, atrás do PIN e do descanso digital. |
+| `src/components/mente/` | Apresentação | Componentes reutilizáveis (campos, gráficos, teclado do PIN, respiração, áudio). |
+| `src/theme/` | Apresentação | Paletas (Sereno, Pastel, Neutro) × claro/escuro e `makeStyles`/`useColors`. |
+| `src/data/insights.ts`, `assessments.ts`, `thoughts.ts`, `report.ts`, `phrases.ts` | Domínio | Regras puras: médias, correlações, metas, sugestões, testes, reestruturação cognitiva, relatório. |
+| `src/data/types.ts`, `defaults.ts`, `repository*.ts`, `user-data-context.tsx` | Dados | Modelo (v2 + migração do v1), SQLite no Android / AsyncStorage na web, store com as ações. |
+| `src/lib/` | Infra | Notificações, mídia, arquivos/PDF, localização, PIN, API, chat, Spotify, Health Connect. |
 
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Equivalências com as bibliotecas citadas no backlog: `expo-image-picker` (react-native-image-picker), `expo-audio` (react-native-audio-recorder-player e react-native-sound), `expo-secure-store` (react-native-encrypted-storage), `expo-file-system` + `expo-sharing` (react-native-fs / react-native-share), `expo-print` (react-native-html-to-pdf), `expo-location` (react-native-geolocation-service), `expo-sqlite` (SQLite), `react-native-svg` (gráfico de radar), `Animated` (animações de respiração), WebSocket nativo do React Native (react-native-websocket). A API do Google Fit foi descontinuada em 2026; o sono de vestíveis vem do **Health Connect**, que a substitui.

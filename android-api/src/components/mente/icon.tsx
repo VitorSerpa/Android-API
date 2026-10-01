@@ -1,6 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
+import { makeStyles, useColors } from '@/theme';
 
-import { MenteColors } from '@/constants/mente-theme';
 
 /**
  * The prototype's glyphs, drawn with plain views instead of the exported SVGs —
@@ -213,9 +213,13 @@ export type IconProps = {
 export function Icon({
   name,
   size = 20,
-  color = MenteColors.textMuted,
-  cutColor = MenteColors.surface,
+  color,
+  cutColor,
 }: IconProps) {
+  const styles = useStyles();
+  const c = useColors();
+  color ??= c.textMuted;
+  cutColor ??= c.surface;
   const scale = size / BOX;
   // `as const` above keeps each entry's literal type, which hides the optional
   // members from narrowing; widen back to the union before rendering.
@@ -295,8 +299,8 @@ export function Icon({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   shape: {
     position: 'absolute',
   },
-});
+}));

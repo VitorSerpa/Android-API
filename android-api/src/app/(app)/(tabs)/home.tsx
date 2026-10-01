@@ -1,60 +1,80 @@
-import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth';
+import { CrisisQuickLog } from '@/components/mente/crisis-quick-log';
 import { Icon } from '@/components/mente/icon';
 import { Screen } from '@/components/mente/screen';
-import { Card, SectionHeader, Spacer } from '@/components/mente/ui';
-import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
-import { moodScore, moodState, suggestionFor, todayCheckIn } from '@/data/insights';
-import type { ToolId } from '@/data/types';
+import { Card, MIN_TOUCH, SectionHeader, Spacer } from '@/components/mente/ui';
+import { MenteRadius, MenteType } from '@/constants/mente-theme';
+import {
+  dayAverages,
+  dosesOn,
+  formatDecimal,
+  latestCheckIn,
+  moodState,
+  suggestionFor,
+  TOOL_NAMES,
+} from '@/data/insights';
+import { randomAffirmation } from '@/data/phrases';
 import { useUserData } from '@/data/user-data-context';
-import { WEEKDAY_INITIALS, formatLongDate, fromDayKey, lastDays } from '@/lib/dates';
+import { WEEKDAY_INITIALS, formatLongDate, formatTime, fromDayKey, lastDays, toDayKey } from '@/lib/dates';
+import { dismissNotification, medicationNotificationId } from '@/lib/notifications';
+import { makeStyles, useColors } from '@/theme';
 
 /** Tallest bar in the 7-day chart, in points — a 5/5 mood. */
 const BAR_MAX = 52;
 const BAR_EMPTY = 4;
 const WATER_GOAL = 8;
 
-const SHORTCUTS: readonly { icon: 'breath' | 'moon'; title: string; duration: string; tool: ToolId }[] = [
-  { icon: 'breath', title: 'Respiração', duration: '2 min', tool: 'breathing' },
-  { icon: 'moon', title: 'Meditação', duration: '5 min', tool: 'meditation' },
-];
-
 export default function HomeScreen() {
+  const styles = useStyles();
+  const c = useColors();
   const router = useRouter();
   const { user } = useAuth();
   const { data, actions } = useUserData();
+  const today = toDayKey();
 
-  const today = todayCheckIn(data);
+  // RF-40 / CA-02: a (possibly) different affirmation every time Início opens.
+  const [affirmation, setAffirmation] = useState(() => randomAffirmation(data));
+  useFocusEffect(
+    useCallback(() => {
+      setAffirmation((current) => randomAffirmation(data, current.id));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
+  );
+  const favorite = data.favoriteAffirmations.includes(affirmation.id);
+
+  const averages = dayAverages(data, today);
+  const latest = latestCheckIn(data);
+  const health = data.health[today];
+  const water = data.water[today] ?? 0;
+  const suggestion = suggestionFor(data);
+  const doses = dosesOn(data, today);
   const firstName = user?.name.split(' ')[0] ?? '';
-  const water = data.water[lastDays(1)[0]] ?? 0;
 
   const metrics = [
-    { label: 'Humor', value: today ? String(moodScore(today)) : '–', scale: '/5', color: MenteColors.mood },
-    { label: 'Ansiedade', value: today ? String(today.anxiety) : '–', scale: '/10', color: MenteColors.anxiety },
-    { label: 'Energia', value: today ? String(today.energy) : '–', scale: '/5', color: MenteColors.energy },
+    { label: 'Humor', value: averages.mood, scale: '/5', color: c.mood },
+    { label: 'Ansiedade', value: averages.anxiety, scale: '/10', color: c.anxiety },
+    { label: 'Energia', value: averages.energy, scale: '/5', color: c.energy },
   ];
 
   const week = lastDays(7).map((day, index) => {
-    const checkIn = data.checkIns[day];
+    const mood = dayAverages(data, day).mood;
     return {
       day,
       initial: WEEKDAY_INITIALS[fromDayKey(day).getDay()],
-      height: checkIn ? (moodScore(checkIn) / 5) * BAR_MAX : BAR_EMPTY,
+      height: mood === null ? BAR_EMPTY : (mood / 5) * BAR_MAX,
+      mood,
       today: index === 6,
     };
   });
 
-  const habits = [
-    { key: 'sleep', value: today?.sleep ?? '–', label: 'Sono', color: MenteColors.energy },
-    {
-      key: 'activity',
-      value: today?.activity.trim() ? today.activity.split('·')[0].trim() : '–',
-      label: 'Atividade',
-      color: MenteColors.mood,
-    },
-  ];
+  const takeDose = (medicationId: string, time: string) => {
+    actions.recordIntake(medicationId, today, time);
+    dismissNotification(medicationNotificationId(medicationId, time)).catch(() => {});
+  };
 
   return (
     <Screen>
@@ -66,22 +86,48 @@ export default function HomeScreen() {
         <Spacer />
         <View style={styles.statePill}>
           <View style={styles.stateDot} />
-          <Text style={styles.stateText}>{moodState(today)}</Text>
+          <Text style={styles.stateText}>{latest?.day === today ? moodState(latest) : 'SEM CHECK-IN'}</Text>
+        </View>
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityHint="Abre o modo de emergência com contatos de apoio e seu plano de ação"
+        onPress={() => router.push('/emergency')}
+        style={({ pressed }) => [styles.helpButton, pressed && styles.pressed]}>
+        <Icon name="alert" size={17} color={c.dangerText} cutColor={c.dangerSurface} />
+        <Text style={styles.helpButtonText}>Preciso de ajuda agora</Text>
+      </Pressable>
+
+      <View style={styles.affirmationCard}>
+        <Text style={styles.affirmationEyebrow}>AFIRMAÇÃO DE HOJE</Text>
+        <Text style={styles.affirmationText}>{affirmation.text}</Text>
+        <View style={styles.affirmationActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: favorite }}
+            accessibilityLabel={favorite ? 'Remover das favoritas' : 'Salvar como favorita'}
+            onPress={() => actions.toggleFavoriteAffirmation(affirmation.id)}
+            style={styles.affirmationButton}>
+            <Text style={styles.affirmationButtonText}>{favorite ? '★ Favorita' : '☆ Favoritar'}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setAffirmation((current) => randomAffirmation(data, current.id))}
+            style={styles.affirmationButton}>
+            <Text style={styles.affirmationButtonText}>Outra</Text>
+          </Pressable>
         </View>
       </View>
 
       <Card style={styles.summaryCard}>
-        <SectionHeader
-          title="Resumo de hoje"
-          action="Ver histórico"
-          onPressAction={() => router.navigate('/history')}
-        />
+        <SectionHeader title="Resumo de hoje" action="Ver dia" onPressAction={() => router.push({ pathname: '/day/[day]', params: { day: today } })} />
 
         <View style={styles.metricRow}>
           {metrics.map((metric) => (
             <View key={metric.label} style={styles.metric}>
               <View style={styles.metricValueRow}>
-                <Text style={styles.metricValue}>{metric.value}</Text>
+                <Text style={styles.metricValue}>{metric.value === null ? '–' : formatDecimal(metric.value)}</Text>
                 <Text style={styles.metricScale}>{metric.scale}</Text>
               </View>
               <Text style={styles.metricLabel}>{metric.label}</Text>
@@ -90,55 +136,45 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        <View style={styles.chart} accessibilityLabel="Humor dos últimos 7 dias">
+        <View
+          style={styles.chart}
+          accessible
+          accessibilityLabel={`Humor dos últimos 7 dias: ${week.map((entry) => (entry.mood === null ? 'sem registro' : formatDecimal(entry.mood))).join(', ')}`}>
           {week.map((entry) => (
             <View key={entry.day} style={styles.chartColumn}>
-              <View
-                style={[
-                  styles.chartBar,
-                  {
-                    height: entry.height,
-                    backgroundColor: entry.today ? MenteColors.barToday : MenteColors.barIdle,
-                  },
-                ]}
-              />
+              <View style={[styles.chartBar, { height: entry.height, backgroundColor: entry.today ? c.barToday : c.barIdle }]} />
               <Text style={styles.chartLabel}>{entry.initial}</Text>
             </View>
           ))}
         </View>
       </Card>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/check-in')}
-        style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-        <Text style={styles.primaryButtonText}>
-          {today ? 'Atualizar check-in de hoje' : 'Fazer check-in'}
-        </Text>
+      <Pressable accessibilityRole="button" onPress={() => router.push('/check-in')} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+        <Text style={styles.primaryButtonText}>{averages.count ? 'Novo check-in' : 'Fazer check-in'}</Text>
       </Pressable>
 
       <View style={styles.habitRow}>
-        {habits.map((habit) => (
-          <Pressable
-            key={habit.key}
-            accessibilityRole="button"
-            onPress={() => router.push('/check-in')}
-            style={({ pressed }) => [styles.habit, pressed && styles.pressed]}>
-            <View style={[styles.habitDot, { backgroundColor: habit.color }]} />
-            <Text style={styles.habitValue} numberOfLines={1}>
-              {habit.value}
-            </Text>
-            <Text style={styles.habitLabel}>{habit.label}</Text>
-          </Pressable>
-        ))}
-
+        <Pressable accessibilityRole="button" onPress={() => router.push('/check-in')} style={styles.habit}>
+          <View style={[styles.habitDot, { backgroundColor: c.energy }]} />
+          <Text style={styles.habitValue} numberOfLines={1}>
+            {health?.sleepHours != null ? `${formatDecimal(health.sleepHours)} h` : (health?.sleepQuality ?? '–')}
+          </Text>
+          <Text style={styles.habitLabel}>Sono</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/check-in')} style={styles.habit}>
+          <View style={[styles.habitDot, { backgroundColor: c.mood }]} />
+          <Text style={styles.habitValue} numberOfLines={1}>
+            {health?.activityMinutes != null ? `${health.activityMinutes} min` : health?.activities.length ? `${health.activities.length} ativ.` : '–'}
+          </Text>
+          <Text style={styles.habitLabel}>Atividade</Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Água: ${water} de ${WATER_GOAL} copos. Toque para adicionar um copo, segure para remover.`}
           onPress={() => actions.addWater(1)}
           onLongPress={() => actions.addWater(-1)}
-          style={({ pressed }) => [styles.habit, pressed && styles.pressed]}>
-          <View style={[styles.habitDot, { backgroundColor: MenteColors.primary }]} />
+          style={styles.habit}>
+          <View style={[styles.habitDot, { backgroundColor: c.primary }]} />
           <Text style={styles.habitValue}>
             {water}/{WATER_GOAL} copos
           </Text>
@@ -146,53 +182,73 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      {doses.length ? (
+        <Card style={styles.dosesCard}>
+          <SectionHeader title="Medicamentos de hoje" action="Gerenciar" onPressAction={() => router.push('/medications')} />
+          {doses.map((dose) => (
+            <View key={`${dose.medicationId}-${dose.time}`} style={styles.doseRow}>
+              <Text style={styles.doseTime}>{dose.time}</Text>
+              <View style={styles.flex}>
+                <Text style={styles.habitValue}>{dose.name}</Text>
+                {dose.dosage ? <Text style={styles.habitLabel}>{dose.dosage}</Text> : null}
+              </View>
+              {dose.takenAt ? (
+                <Text style={styles.taken}>Tomei às {formatTime(new Date(dose.takenAt))}</Text>
+              ) : (
+                <Pressable accessibilityRole="button" accessibilityLabel={`Tomei ${dose.name} das ${dose.time}`} onPress={() => takeDose(dose.medicationId, dose.time)} style={styles.takeButton}>
+                  <Text style={styles.takeButtonText}>Tomei</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       <View style={styles.suggestionCard}>
         <View style={styles.suggestionHeader}>
-          <Icon name="breath" size={16} color={MenteColors.greenText} />
+          <Icon name="breath" size={16} color={c.greenText} />
           <Text style={styles.suggestionTitle}>Sugestão para agora</Text>
         </View>
-        <Text style={styles.suggestionBody}>{suggestionFor(today)}</Text>
-      </View>
-
-      <View style={styles.shortcutRow}>
-        {SHORTCUTS.map((shortcut) => (
+        <Text style={styles.suggestionBody}>{suggestion.text}</Text>
+        {suggestion.tool ? (
           <Pressable
-            key={shortcut.title}
             accessibilityRole="button"
-            onPress={() => router.push({ pathname: '/practice', params: { tool: shortcut.tool } })}
-            style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}>
-            <Icon name={shortcut.icon} size={20} color={MenteColors.accent} />
-            <View>
-              <Text style={styles.shortcutTitle}>{shortcut.title}</Text>
-              <Text style={styles.shortcutDuration}>{shortcut.duration}</Text>
-            </View>
+            onPress={() =>
+              router.push({
+                pathname: '/practice',
+                params: { tool: suggestion.tool!, ...(suggestion.minutes ? { minutes: String(suggestion.minutes) } : {}) },
+              })
+            }
+            style={styles.suggestionButton}>
+            <Text style={styles.suggestionButtonText}>Começar {TOOL_NAMES[suggestion.tool].toLowerCase()}</Text>
           </Pressable>
-        ))}
+        ) : (
+          <Pressable accessibilityRole="button" onPress={() => router.push('/check-in')} style={styles.suggestionButton}>
+            <Text style={styles.suggestionButtonText}>Fazer check-in</Text>
+          </Pressable>
+        )}
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/emergency')}
-        style={({ pressed }) => [styles.helpButton, pressed && styles.pressed]}>
-        <Icon name="alert" size={17} color={MenteColors.dangerText} cutColor={MenteColors.dangerSurface} />
-        <Text style={styles.helpButtonText}>Preciso de ajuda agora</Text>
-      </Pressable>
+      <CrisisQuickLog />
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
+  flex: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   greeting: {
     ...MenteType.heading,
-    color: MenteColors.text,
+    color: c.text,
   },
   date: {
     ...MenteType.small,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   statePill: {
     flexDirection: 'row',
@@ -201,18 +257,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.badgeBackground,
+    backgroundColor: c.badgeBackground,
   },
   stateDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: MenteColors.badgeDot,
+    backgroundColor: c.badgeDot,
   },
   stateText: {
     ...MenteType.badge,
     letterSpacing: 0.6,
-    color: MenteColors.accent,
+    color: c.accent,
+  },
+  affirmationCard: {
+    gap: 8,
+    padding: 16,
+    borderRadius: MenteRadius.card,
+    backgroundColor: c.purpleSurface,
+  },
+  affirmationEyebrow: {
+    ...MenteType.sectionEyebrow,
+    color: c.purpleText,
+  },
+  affirmationText: {
+    ...MenteType.sectionTitle,
+    fontSize: 17,
+    lineHeight: 24,
+    color: c.purpleText,
+  },
+  affirmationActions: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  affirmationButton: {
+    minHeight: MIN_TOUCH,
+    justifyContent: 'center',
+  },
+  affirmationButtonText: {
+    ...MenteType.captionStrong,
+    color: c.purpleText,
   },
   summaryCard: {
     gap: 14,
@@ -228,7 +312,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 12,
     borderRadius: MenteRadius.chip,
-    backgroundColor: MenteColors.background,
+    backgroundColor: c.background,
   },
   metricValueRow: {
     flexDirection: 'row',
@@ -237,17 +321,17 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     ...MenteType.metric,
-    color: MenteColors.text,
+    color: c.text,
   },
   metricScale: {
     ...MenteType.link,
     fontFamily: MenteType.tiny.fontFamily,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   metricLabel: {
     ...MenteType.tiny,
     fontFamily: MenteType.label.fontFamily,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   metricBar: {
     width: 34,
@@ -269,19 +353,19 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   chartLabel: {
-    ...MenteType.micro,
-    color: MenteColors.textMuted,
+    ...MenteType.tiny,
+    color: c.textMuted,
   },
   primaryButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    minHeight: 52,
     borderRadius: MenteRadius.button,
-    backgroundColor: MenteColors.primary,
+    backgroundColor: c.primary,
   },
   primaryButtonText: {
     ...MenteType.button,
-    color: MenteColors.onPrimary,
+    color: c.onPrimary,
   },
   pressed: {
     opacity: 0.75,
@@ -294,10 +378,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     gap: 3,
+    minHeight: MIN_TOUCH,
     paddingHorizontal: 10,
     paddingVertical: 11,
     borderRadius: MenteRadius.chip,
-    backgroundColor: MenteColors.surface,
+    backgroundColor: c.surface,
   },
   habitDot: {
     width: 7,
@@ -306,17 +391,45 @@ const styles = StyleSheet.create({
   },
   habitValue: {
     ...MenteType.captionStrong,
-    color: MenteColors.text,
+    color: c.text,
   },
   habitLabel: {
     ...MenteType.tiny,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
+  },
+  dosesCard: {
+    gap: 10,
+  },
+  doseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  doseTime: {
+    ...MenteType.captionStrong,
+    width: 44,
+    color: c.accent,
+  },
+  taken: {
+    ...MenteType.smallStrong,
+    color: c.greenText,
+  },
+  takeButton: {
+    minHeight: MIN_TOUCH,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: MenteRadius.pill,
+    backgroundColor: c.primary,
+  },
+  takeButtonText: {
+    ...MenteType.captionStrong,
+    color: c.onPrimary,
   },
   suggestionCard: {
     gap: 8,
     padding: 16,
     borderRadius: MenteRadius.card,
-    backgroundColor: MenteColors.greenSurface,
+    backgroundColor: c.greenSurface,
   },
   suggestionHeader: {
     flexDirection: 'row',
@@ -325,48 +438,37 @@ const styles = StyleSheet.create({
   },
   suggestionTitle: {
     ...MenteType.smallStrong,
-    color: MenteColors.greenText,
+    color: c.greenText,
   },
   suggestionBody: {
     ...MenteType.caption,
     lineHeight: 19,
-    color: MenteColors.greenText,
+    color: c.greenText,
   },
-  shortcutRow: {
-    flexDirection: 'row',
-    gap: 10,
+  suggestionButton: {
+    alignSelf: 'flex-start',
+    minHeight: MIN_TOUCH,
+    justifyContent: 'center',
   },
-  shortcut: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 13,
-    borderRadius: MenteRadius.button,
-    backgroundColor: MenteColors.surface,
-  },
-  shortcutTitle: {
+  suggestionButtonText: {
     ...MenteType.captionStrong,
-    color: MenteColors.text,
-  },
-  shortcutDuration: {
-    ...MenteType.tiny,
-    color: MenteColors.textMuted,
+    color: c.greenText,
+    textDecorationLine: 'underline',
   },
   helpButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
-    paddingVertical: 14,
+    minHeight: 52,
     borderRadius: MenteRadius.button,
     borderWidth: 1,
-    borderColor: MenteColors.dangerBorder,
-    backgroundColor: MenteColors.dangerSurface,
+    borderColor: c.dangerBorder,
+    backgroundColor: c.dangerSurface,
   },
   helpButtonText: {
     ...MenteType.body,
     fontFamily: MenteType.captionStrong.fontFamily,
-    color: MenteColors.dangerText,
+    color: c.dangerText,
   },
-});
+}));

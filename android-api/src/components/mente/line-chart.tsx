@@ -1,6 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
+import { makeStyles } from '@/theme';
 
-import { MenteColors } from '@/constants/mente-theme';
 
 export type Series = {
   /** One value per point, normalised to 0 (bottom) … 1 (top). `null` leaves a gap. */
@@ -27,6 +27,7 @@ export function LineChart({
   height: number;
   series: readonly Series[];
 }) {
+  const styles = useStyles();
   const toPoint = (value: number, index: number, count: number) => ({
     x: count === 1 ? width / 2 : (index / (count - 1)) * width,
     y: (1 - value) * height,
@@ -91,12 +92,12 @@ export function LineChart({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   grid: {
     position: 'absolute',
     left: 0,
     height: 1,
-    backgroundColor: MenteColors.border,
+    backgroundColor: c.border,
   },
   segment: {
     position: 'absolute',
@@ -108,4 +109,4 @@ const styles = StyleSheet.create({
     height: DOT,
     borderRadius: DOT / 2,
   },
-});
+}));

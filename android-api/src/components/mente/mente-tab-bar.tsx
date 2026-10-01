@@ -4,7 +4,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/mente/icon';
-import { MenteColors, MenteType } from '@/constants/mente-theme';
+import { MenteType } from '@/constants/mente-theme';
+import { makeStyles, useColors } from '@/theme';
 
 /**
  * `@react-navigation/bottom-tabs` is vendored inside expo-router rather than
@@ -26,6 +27,8 @@ const TAB_ICONS: Record<string, IconName> = {
  * a 19px glyph and a 10px label that turns semibold + accent when selected.
  */
 export function MenteTabBar({ state, descriptors, navigation }: TabBarProps) {
+  const c = useColors();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
 
   return (
@@ -34,7 +37,7 @@ export function MenteTabBar({ state, descriptors, navigation }: TabBarProps) {
         const { options } = descriptors[route.key];
         const label = options.title ?? route.name;
         const focused = state.index === index;
-        const color = focused ? MenteColors.accent : MenteColors.textMuted;
+        const color = focused ? c.accent : c.textMuted;
 
         const onPress = () => {
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
@@ -61,15 +64,15 @@ export function MenteTabBar({ state, descriptors, navigation }: TabBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: 12,
     paddingHorizontal: 6,
-    backgroundColor: MenteColors.surface,
+    backgroundColor: c.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: MenteColors.border,
+    borderTopColor: c.border,
   },
   tab: {
     flex: 1,
@@ -82,4 +85,4 @@ const styles = StyleSheet.create({
   labelFocused: {
     ...MenteType.tinyStrong,
   },
-});
+}));

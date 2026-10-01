@@ -1,0 +1,19 @@
+{
+  "name": "mente-equilibrada-server",
+  "version": "1.0.0",
+  "description": "Backend do app Mente Equilibrada: grupos de apoio anônimos em tempo real e convites para resumos semanais.",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

@@ -1,52 +1,36 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth';
 import { validateName } from '@/auth/validation';
 import { Screen } from '@/components/mente/screen';
-import {
-  Card,
-  Chevron,
-  IconBubble,
-  Input,
-  Pill,
-  SectionEyebrow,
-  SettingRow,
-  Toggle,
-} from '@/components/mente/ui';
-import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
+import { Card, Chevron, IconBubble, Input, Pill, SectionEyebrow, SettingRow } from '@/components/mente/ui';
+import { MenteRadius, MenteType } from '@/constants/mente-theme';
 import { checkInCount } from '@/data/insights';
-import { buildWeeklyReport } from '@/data/report';
-import { LIFE_PROFILES } from '@/data/types';
+import { buildWeeklyReport, reportHtml, reportText } from '@/data/report';
 import { useUserData } from '@/data/user-data-context';
-import { daysBetween } from '@/lib/dates';
-import { comingSoon, confirm, notify } from '@/lib/dialogs';
+import { daysBetween, toDayKey } from '@/lib/dates';
+import { confirm, notify } from '@/lib/dialogs';
+import { sharePdf } from '@/lib/files';
 import { shareText } from '@/lib/share';
-
-/** The "Sereno" palette swatches shown next to the colour-scheme row. */
-const SWATCHES = [
-  MenteColors.primary,
-  MenteColors.mood,
-  MenteColors.anxiety,
-  MenteColors.energy,
-  MenteColors.accent,
-];
+import { makeStyles, PALETTE_NAMES, useTheme } from '@/theme';
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 export default function ProfileScreen() {
+  const styles = useStyles();
   const router = useRouter();
+  const { prefs } = useTheme();
   const { user, updateProfile, signOut } = useAuth();
-  const { data, actions } = useUserData();
+  const { data } = useUserData();
 
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name ?? '');
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const days = user ? daysBetween(new Date(user.createdAt), new Date()) + 1 : 0;
-  const checkIns = checkInCount(data);
-  const { settings } = data;
   const activeReminders = data.reminders.filter((item) => item.enabled).length;
 
   const saveName = async () => {
@@ -66,6 +50,33 @@ export default function ProfileScreen() {
     }
   };
 
+  /** US-10: PDF of the last 7 days, shared through the native Android sheet (CA-02). */
+  const sharePdfReport = async () => {
+    const report = buildWeeklyReport(data);
+    // CA-03: an empty week gets a warning, never an empty PDF.
+    if (!report.hasData) {
+      notify('Sem dados nesta semana', 'Não há registros nos últimos 7 dias. Faça alguns check-ins para gerar o relatório.');
+      return;
+    }
+    setGenerating(true);
+    try {
+      await sharePdf(reportHtml(report, user?.name ?? ''), `relatorio-semanal-${toDayKey()}.pdf`, 'Compartilhar relatório semanal');
+    } catch (error) {
+      notify('Não foi possível gerar o PDF', error instanceof Error ? error.message : undefined);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const shareTextReport = () => {
+    const report = buildWeeklyReport(data);
+    if (!report.hasData) {
+      notify('Sem dados nesta semana', 'Não há registros nos últimos 7 dias.');
+      return;
+    }
+    shareText('Resumo semanal', reportText(report, user?.name ?? ''));
+  };
+
   const onSignOut = async () => {
     const ok = await confirm('Sair da conta', 'Você precisará entrar novamente para ver seus dados.', 'Sair');
     if (ok) await signOut();
@@ -77,24 +88,16 @@ export default function ProfileScreen() {
         <IconBubble name="user" size={44} glyphSize={22} />
         <View style={styles.profileText}>
           {editing ? (
-            <Input
-              autoFocus
-              value={name}
-              onChangeText={setName}
-              onSubmitEditing={saveName}
-              returnKeyType="done"
-              autoComplete="name"
-              style={styles.nameInput}
-            />
+            <Input autoFocus accessibilityLabel="Seu nome" value={name} onChangeText={setName} onSubmitEditing={saveName} returnKeyType="done" autoComplete="name" style={styles.nameInput} />
           ) : (
             <Text style={styles.profileName}>{user?.name}</Text>
           )}
           <Text style={styles.profileMeta}>
-            Com você há {plural(days, 'dia', 'dias')} · {plural(checkIns, 'check-in', 'check-ins')}
+            Com você há {plural(days, 'dia', 'dias')} · {plural(checkInCount(data), 'check-in', 'check-ins')}
           </Text>
         </View>
         {saving ? (
-          <ActivityIndicator color={MenteColors.accent} />
+          <ActivityIndicator />
         ) : editing ? (
           <Pill label="Salvar" tone="accent" onPress={saveName} />
         ) : (
@@ -109,73 +112,22 @@ export default function ProfileScreen() {
       </View>
 
       <Card style={styles.section}>
-        <SectionEyebrow>CONTA E SEGURANÇA</SectionEyebrow>
-        <SettingRow icon="user" title="E-mail" subtitle={user?.email} />
-        <SettingRow
-          icon="lock"
-          title="PIN de proteção"
-          subtitle="Em breve"
-          trailing={<Chevron />}
-          onPress={() => comingSoon('PIN de proteção')}
-        />
-        <SettingRow
-          icon="cloud"
-          title="Modo offline"
-          subtitle={settings.offlineMode ? 'Dados apenas neste aparelho' : 'Sincronizar quando disponível'}
-          trailing={
-            <Toggle
-              accessibilityLabel="Modo offline"
-              value={settings.offlineMode}
-              onValueChange={(offlineMode) => actions.updateSettings({ offlineMode })}
-            />
-          }
-        />
-        <SettingRow
-          icon="moon"
-          title="Descanso digital"
-          subtitle="21:30 — 07:00"
-          trailing={
-            <Toggle
-              accessibilityLabel="Descanso digital"
-              value={settings.digitalRest}
-              onValueChange={(digitalRest) => actions.updateSettings({ digitalRest })}
-            />
-          }
-        />
+        <SectionEyebrow>ROTINA E EVOLUÇÃO</SectionEyebrow>
+        <SettingRow icon="bell" title="Lembretes" subtitle={`${plural(activeReminders, 'lembrete ativo', 'lembretes ativos')} · silêncio noturno ${data.settings.quietHours.enabled ? `${data.settings.quietHours.start}–${data.settings.quietHours.end}` : 'desligado'}`} trailing={<Chevron />} onPress={() => router.push('/reminders')} />
+        <SettingRow icon="clipboard" title="Medicamentos" subtitle={data.medications.length ? plural(data.medications.length, 'cadastrado', 'cadastrados') : 'Horário, dosagem e confirmação'} trailing={<Chevron />} onPress={() => router.push('/medications')} />
+        <SettingRow icon="target" title="Metas e autoavaliações" subtitle={`${plural(data.goals.length, 'meta', 'metas')} · estresse, WHO-5 e resiliência`} trailing={<Chevron />} onPress={() => router.push('/wellbeing')} />
       </Card>
 
       <Card style={styles.section}>
-        <SectionEyebrow>APARÊNCIA E PERFIS DE VIDA</SectionEyebrow>
+        <SectionEyebrow>RELATÓRIOS</SectionEyebrow>
         <SettingRow
-          icon="palette"
-          title="Paleta de cores"
-          subtitle="Sereno"
-          trailing={
-            <View style={styles.swatchRow}>
-              {SWATCHES.map((color) => (
-                <View key={color} style={[styles.swatch, { backgroundColor: color }]} />
-              ))}
-            </View>
-          }
+          icon="doc"
+          title="Relatório semanal em PDF"
+          subtitle="Humor, sono, ansiedade e atividades dos últimos 7 dias"
+          trailing={generating ? <ActivityIndicator /> : <Chevron />}
+          onPress={sharePdfReport}
         />
-        <SettingRow
-          icon="moon"
-          title="Modo escuro"
-          subtitle="Em breve"
-          trailing={<Chevron />}
-          onPress={() => comingSoon('Modo escuro')}
-        />
-        <SettingRow
-          icon="people"
-          title="Perfis de vida"
-          trailing={
-            <View style={styles.tagRow}>
-              {LIFE_PROFILES.map((profile) => (
-                <Pill key={profile} label={profile} />
-              ))}
-            </View>
-          }
-        />
+        <SettingRow icon="share" title="Resumo em texto" subtitle="Para colar em uma mensagem" trailing={<Chevron />} onPress={shareTextReport} />
       </Card>
 
       <Card style={styles.section}>
@@ -183,86 +135,46 @@ export default function ProfileScreen() {
         <SettingRow
           icon="phone"
           title="Contatos de apoio"
-          subtitle={
-            data.contacts.length
-              ? `${plural(data.contacts.length, 'contato configurado', 'contatos configurados')}`
-              : 'Nenhum contato ainda'
-          }
+          subtitle={data.contacts.length ? plural(data.contacts.length, 'contato configurado', 'contatos configurados') : 'Nenhum contato ainda'}
           trailing={<Chevron />}
           onPress={() => router.push('/contacts')}
         />
         <SettingRow
           icon="people"
-          title="Convidar pessoa de confiança"
-          subtitle="Compartilhe seu progresso"
+          title="Grupos, pessoa de confiança e integrações"
+          subtitle="Grupos anônimos · resumo semanal · Spotify · sono do relógio"
           trailing={<Chevron />}
-          onPress={() =>
-            shareText(
-              'Convite',
-              `${user?.name ?? 'Alguém'} está usando o Mente Equilibrada para cuidar do bem-estar e gostaria de ter você por perto nessa jornada.`,
-            )
-          }
-        />
-        <SettingRow
-          icon="people"
-          title="Grupos de apoio anônimos"
-          subtitle="Em breve"
-          trailing={<Chevron />}
-          onPress={() => comingSoon('Grupos de apoio anônimos')}
+          onPress={() => router.push('/community')}
         />
       </Card>
 
       <Card style={styles.section}>
-        <SectionEyebrow>INTEGRAÇÕES E RELATÓRIOS</SectionEyebrow>
+        <SectionEyebrow>CONFIGURAÇÕES</SectionEyebrow>
         <SettingRow
-          icon="music"
-          title="Spotify"
-          subtitle="Playlists de calma"
-          trailing={<Pill label="Conectar" tone="accent" onPress={() => comingSoon('Integração com Spotify')} />}
-        />
-        <SettingRow
-          icon="fit"
-          title="Google Fit"
-          subtitle="Sono e atividade"
-          trailing={<Pill label="Conectar" tone="accent" onPress={() => comingSoon('Integração com Google Fit')} />}
-        />
-        <SettingRow
-          icon="doc"
-          title="Relatório semanal em PDF"
-          subtitle="Em breve"
+          icon="palette"
+          title="Aparência, perfis e descanso digital"
+          subtitle={`${PALETTE_NAMES[prefs.palette]} · ${plural(data.profiles.length, 'perfil de vida', 'perfis de vida')}`}
           trailing={<Chevron />}
-          onPress={() => comingSoon('Relatório em PDF')}
+          onPress={() => router.push('/settings')}
         />
         <SettingRow
-          icon="share"
-          title="Compartilhar relatório"
-          subtitle="E-mail ou mensagem"
+          icon="lock"
+          title="Privacidade e meus dados"
+          subtitle={`PIN · modo offline ${data.settings.offlineMode ? 'ativo' : 'desligado'} · exportar JSON`}
           trailing={<Chevron />}
-          onPress={() => shareText('Resumo semanal', buildWeeklyReport(data, user?.name ?? ''))}
+          onPress={() => router.push('/settings')}
         />
+        <SettingRow icon="user" title="E-mail" subtitle={user?.email} />
       </Card>
 
-      <View style={styles.standaloneRow}>
-        <SettingRow
-          icon="target"
-          title="Lembretes, metas e avaliações"
-          subtitle={`${plural(activeReminders, 'lembrete', 'lembretes')} · ${plural(data.goals.length, 'meta ativa', 'metas ativas')}`}
-          trailing={<Chevron />}
-          onPress={() => router.push('/reminders')}
-        />
-      </View>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={onSignOut}
-        style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}>
+      <Pressable accessibilityRole="button" onPress={onSignOut} style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}>
         <Text style={styles.signOutText}>Sair da conta</Text>
       </Pressable>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -270,7 +182,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: MenteRadius.card,
-    backgroundColor: MenteColors.surface,
+    backgroundColor: c.surface,
   },
   profileText: {
     flex: 1,
@@ -278,54 +190,35 @@ const styles = StyleSheet.create({
   },
   profileName: {
     ...MenteType.button,
-    color: MenteColors.text,
+    color: c.text,
   },
   nameInput: {
     ...MenteType.button,
     paddingVertical: 4,
   },
   profileMeta: {
-    ...MenteType.link,
-    fontFamily: MenteType.tiny.fontFamily,
-    color: MenteColors.textMuted,
+    ...MenteType.small,
+    color: c.textMuted,
   },
   section: {
     gap: 10,
     paddingVertical: 14,
-  },
-  swatchRow: {
-    flexDirection: 'row',
-    gap: 7,
-  },
-  swatch: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    gap: 6,
   },
   pressed: {
     opacity: 0.75,
   },
   signOut: {
     alignItems: 'center',
-    paddingVertical: 14,
+    justifyContent: 'center',
+    minHeight: 52,
     borderRadius: MenteRadius.button,
     borderWidth: 1,
-    borderColor: MenteColors.dangerBorder,
-    backgroundColor: MenteColors.dangerSurface,
+    borderColor: c.dangerBorder,
+    backgroundColor: c.dangerSurface,
   },
   signOutText: {
     ...MenteType.captionStrong,
     fontSize: 14,
-    color: MenteColors.dangerText,
+    color: c.dangerText,
   },
-  standaloneRow: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: MenteRadius.row,
-    backgroundColor: MenteColors.surface,
-  },
-});
+}));

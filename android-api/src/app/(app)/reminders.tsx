@@ -1,301 +1,245 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 
+import { ChoiceChips, TimeField, TimeList } from '@/components/mente/fields';
 import { Icon } from '@/components/mente/icon';
-import { Button, Card, Chevron, Input, Pill, Spacer, Toggle, TopBar } from '@/components/mente/ui';
-import { MenteColors, MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
-import { ASSESSMENTS } from '@/data/assessments';
-import { goalProgress } from '@/data/insights';
-import type { AssessmentKind } from '@/data/types';
+import { StackScreen } from '@/components/mente/stack-screen';
+import { Button, Card, Chevron, Input, MIN_TOUCH, Spacer, Toggle, TOUCH_SLOP, TopBar } from '@/components/mente/ui';
+import { MenteRadius, MenteType } from '@/constants/mente-theme';
+import type { Reminder, ReminderKind } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
-import { formatNumericDate, toDayKey } from '@/lib/dates';
+import { toDayKey } from '@/lib/dates';
 import { confirm } from '@/lib/dialogs';
+import { ensurePermission, notificationsSupported } from '@/lib/notifications';
+import { deferPastQuietHours } from '@/lib/reminder-schedule';
+import { timesEvery } from '@/lib/time';
+import { makeStyles, useColors } from '@/theme';
 
-const RATINGS = ['Sim', 'Mais ou menos', 'Não'] as const;
+const KIND_NAMES: Record<ReminderKind, string> = {
+  checkin: 'Check-in de humor',
+  hydration: 'Hidratação',
+  break: 'Pausa ativa',
+  stretch: 'Alongamento',
+  custom: 'Outro',
+};
+const KINDS = Object.keys(KIND_NAMES) as ReminderKind[];
 
-const ASSESSMENT_COLORS: Record<AssessmentKind, string> = {
-  stress: MenteColors.anxiety,
-  wellbeing: MenteColors.primary,
-  resilience: MenteColors.mood,
+const PRESETS: Partial<Record<ReminderKind, { label: string; times: () => string[] }>> = {
+  checkin: { label: 'Ao acordar, meio-dia e ao dormir', times: () => ['08:00', '12:00', '21:30'] },
+  hydration: { label: 'A cada 2 h, das 9h às 19h', times: () => timesEvery(2, '09:00', '19:00') },
+  break: { label: 'A cada 90 min, das 9h às 18h', times: () => timesEvery(1.5, '09:00', '18:00') },
+  stretch: { label: '10:00, 15:00 e 17:30', times: () => ['10:00', '15:00', '17:30'] },
 };
 
 export default function RemindersScreen() {
+  const styles = useStyles();
+  const c = useColors();
   const router = useRouter();
   const { data, actions } = useUserData();
-  const today = toDayKey();
+  const [creating, setCreating] = useState(false);
+  const [permission, setPermission] = useState<boolean | null>(null);
+  const quiet = data.settings.quietHours;
 
-  const [reminderForm, setReminderForm] = useState<{ title: string; schedule: string } | null>(null);
-  const [goalForm, setGoalForm] = useState<{ title: string; target: string } | null>(null);
+  useEffect(() => {
+    if (notificationsSupported) ensurePermission().then(setPermission, () => setPermission(false));
+  }, []);
 
-  const addReminder = () => {
-    if (!reminderForm?.title.trim()) return;
-    actions.addReminder(reminderForm.title.trim(), reminderForm.schedule.trim() || 'Sem horário');
-    setReminderForm(null);
+  return (
+    <StackScreen>
+      <TopBar title="Lembretes" />
+
+      {!notificationsSupported ? (
+        <Text style={styles.note}>As notificações aparecem no app para Android. Nesta prévia web só a lista é salva.</Text>
+      ) : permission === false ? (
+        <Card style={styles.warning}>
+          <Text style={styles.warningText}>As notificações estão bloqueadas. Permita-as nas configurações do Android para receber os lembretes.</Text>
+          <Button label="Tentar permitir" variant="secondary" onPress={() => ensurePermission().then(setPermission)} />
+        </Card>
+      ) : null}
+
+      <Pressable accessibilityRole="button" onPress={() => router.push('/medications')} style={({ pressed }) => [styles.linkCard, pressed && styles.pressed]}>
+        <Icon name="clipboard" size={18} color={c.accent} cutColor={c.surface} />
+        <View style={styles.flex}>
+          <Text style={styles.rowTitle}>Medicamentos e suplementos</Text>
+          <Text style={styles.rowDetail}>
+            {data.medications.length ? `${data.medications.length} cadastrados · lembrete até você tocar em “Tomei”` : 'Cadastre horário e dosagem'}
+          </Text>
+        </View>
+        <Chevron />
+      </Pressable>
+
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Icon name="bell" size={16} color={c.accent} />
+          <Text style={styles.cardTitle}>Lembretes</Text>
+          <Spacer />
+          <Pressable accessibilityRole="button" hitSlop={TOUCH_SLOP} onPress={() => setCreating((value) => !value)}>
+            <Text style={styles.link}>{creating ? 'Cancelar' : '+ Novo'}</Text>
+          </Pressable>
+        </View>
+
+        {creating ? <NewReminder onDone={() => setCreating(false)} /> : null}
+
+        {data.reminders.length === 0 ? <Text style={styles.rowDetail}>Nenhum lembrete. Toque em “+ Novo” para criar.</Text> : null}
+        {data.reminders.map((reminder) => (
+          <ReminderRow key={reminder.id} reminder={reminder} />
+        ))}
+      </Card>
+
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Icon name="moon" size={16} color={c.accent} />
+          <View style={styles.flex}>
+            <Text style={styles.cardTitle}>Silêncio noturno</Text>
+            <Text style={styles.rowDetail}>Nenhuma notificação é enviada nesse horário.</Text>
+          </View>
+          <Toggle
+            accessibilityLabel="Silêncio noturno"
+            value={quiet.enabled}
+            onValueChange={(enabled) => actions.updateSettings({ quietHours: { ...quiet, enabled } })}
+          />
+        </View>
+        {quiet.enabled ? (
+          <>
+            <View style={styles.timeRow}>
+              <TimeField label="Início" value={quiet.start} onChange={(start) => actions.updateSettings({ quietHours: { ...quiet, start } })} />
+              <TimeField label="Fim" value={quiet.end} onChange={(end) => actions.updateSettings({ quietHours: { ...quiet, end } })} />
+            </View>
+            <Text style={styles.rowDetail}>Lembretes marcados dentro desse período são adiados para as {quiet.end}.</Text>
+          </>
+        ) : null}
+      </Card>
+    </StackScreen>
+  );
+}
+
+function NewReminder({ onDone }: { onDone: () => void }) {
+  const styles = useStyles();
+  const { actions } = useUserData();
+  const [kind, setKind] = useState<ReminderKind>('hydration');
+  const [title, setTitle] = useState(KIND_NAMES.hydration);
+  const [times, setTimes] = useState<string[]>(PRESETS.hydration!.times());
+  const preset = PRESETS[kind];
+
+  const pickKind = (next: ReminderKind) => {
+    setKind(next);
+    setTitle(next === 'custom' ? '' : KIND_NAMES[next]);
+    setTimes(PRESETS[next]?.times() ?? []);
   };
 
-  const goalTarget = Number.parseInt(goalForm?.target ?? '', 10);
-  const canAddGoal = Boolean(goalForm?.title.trim()) && goalTarget > 0;
-  const addGoal = () => {
-    if (!goalForm || !canAddGoal) return;
-    actions.addGoal(goalForm.title.trim(), goalTarget);
-    setGoalForm(null);
-  };
-
-  const removeReminder = async (id: string, title: string) => {
-    if (await confirm('Remover lembrete', `Remover “${title}”?`, 'Remover')) actions.removeReminder(id);
-  };
-
-  const removeGoal = async (id: string, title: string) => {
-    if (await confirm('Remover meta', `Remover “${title}”?`, 'Remover')) actions.removeGoal(id);
+  const add = () => {
+    actions.addReminder({ kind, title: title.trim(), times });
+    onDone();
   };
 
   return (
-    <View style={styles.screen}>
-      <StatusBar style="dark" />
-
-      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView
-          style={styles.safeArea}
-          // Android is edge-to-edge (targetSdk 35+), where `adjustResize` no longer
-          // shrinks the window, so pad on both platforms.
-          behavior="padding">
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}>
-          <TopBar title="Rotina e evolução" />
-
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Icon name="bell" size={16} color={MenteColors.accent} />
-              <Text style={styles.cardTitle}>Lembretes</Text>
-              <Spacer />
-              <Pressable
-                accessibilityRole="button"
-                hitSlop={8}
-                onPress={() => setReminderForm(reminderForm ? null : { title: '', schedule: '' })}>
-                <Text style={styles.link}>{reminderForm ? 'Cancelar' : '+ Novo'}</Text>
-              </Pressable>
-            </View>
-
-            {reminderForm ? (
-              <View style={styles.form}>
-                <Input
-                  autoFocus
-                  placeholder="Título (ex.: Medicação)"
-                  value={reminderForm.title}
-                  onChangeText={(title) => setReminderForm({ ...reminderForm, title })}
-                />
-                <Input
-                  placeholder="Quando (ex.: 8:00 e 20:00)"
-                  value={reminderForm.schedule}
-                  onChangeText={(schedule) => setReminderForm({ ...reminderForm, schedule })}
-                  onSubmitEditing={addReminder}
-                />
-                <Button label="Adicionar lembrete" onPress={addReminder} disabled={!reminderForm.title.trim()} />
-              </View>
-            ) : null}
-
-            {data.reminders.length === 0 ? (
-              <Text style={styles.rowDetail}>Nenhum lembrete. Toque em “+ Novo” para criar.</Text>
-            ) : null}
-
-            {data.reminders.map((reminder) => {
-              const done = reminder.doneOn === today;
-              return (
-                <View key={reminder.id} style={styles.row}>
-                  <Pressable
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: done }}
-                    accessibilityHint="Toque para marcar como feito hoje, segure para remover"
-                    onPress={() => actions.toggleReminderDone(reminder.id)}
-                    onLongPress={() => removeReminder(reminder.id, reminder.title)}
-                    style={styles.rowPressable}>
-                    <View style={styles.rowText}>
-                      <Text style={[styles.rowTitle, !reminder.enabled && styles.muted]}>
-                        {reminder.title}
-                      </Text>
-                      <Text style={styles.rowDetail}>{reminder.schedule}</Text>
-                    </View>
-                    {done ? (
-                      <View style={styles.donePill}>
-                        <Text style={styles.donePillText}>Feito hoje</Text>
-                      </View>
-                    ) : null}
-                  </Pressable>
-                  <Toggle
-                    accessibilityLabel={`Lembrete ${reminder.title}`}
-                    value={reminder.enabled}
-                    onValueChange={() => actions.toggleReminder(reminder.id)}
-                  />
-                </View>
-              );
-            })}
-
-            <View style={styles.divider} />
-
-            <View style={styles.row}>
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>Período noturno sem notificações</Text>
-                <Text style={styles.rowDetail}>22:00 — 07:00</Text>
-              </View>
-              <Toggle
-                accessibilityLabel="Período noturno sem notificações"
-                value={data.settings.quietHours}
-                onValueChange={(quietHours) => actions.updateSettings({ quietHours })}
-              />
-            </View>
-
-            <Text style={styles.note}>
-              Os avisos no celular chegam numa próxima versão; por enquanto, marque aqui o que já fez.
-            </Text>
-          </Card>
-
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Icon name="target" size={16} color={MenteColors.accent} />
-              <Text style={styles.cardTitle}>Metas de bem-estar</Text>
-              <Spacer />
-              <Pressable
-                accessibilityRole="button"
-                hitSlop={8}
-                onPress={() => setGoalForm(goalForm ? null : { title: '', target: '' })}>
-                <Text style={styles.link}>{goalForm ? 'Cancelar' : '+ Nova'}</Text>
-              </Pressable>
-            </View>
-
-            {goalForm ? (
-              <View style={styles.form}>
-                <Input
-                  autoFocus
-                  placeholder="Meta (ex.: Caminhar 3x por semana)"
-                  value={goalForm.title}
-                  onChangeText={(title) => setGoalForm({ ...goalForm, title })}
-                />
-                <Input
-                  placeholder="Quantas vezes? (ex.: 3)"
-                  inputMode="numeric"
-                  value={goalForm.target}
-                  onChangeText={(target) => setGoalForm({ ...goalForm, target: target.replace(/\D/g, '') })}
-                  onSubmitEditing={addGoal}
-                />
-                <Button label="Adicionar meta" onPress={addGoal} disabled={!canAddGoal} />
-              </View>
-            ) : null}
-
-            {data.goals.map((goal) => {
-              const progress = Math.min(goalProgress(data, goal), goal.target);
-              return (
-                <Pressable
-                  key={goal.id}
-                  accessibilityHint="Segure para remover"
-                  onLongPress={() => removeGoal(goal.id, goal.title)}
-                  style={styles.goal}>
-                  <View style={styles.goalHeader}>
-                    <Text style={styles.goalTitle}>{goal.title}</Text>
-                    <Spacer />
-                    <Text style={styles.goalProgress}>
-                      {progress} de {goal.target}
-                    </Text>
-                    {goal.kind === 'custom' && progress < goal.target ? (
-                      <Pill label="+1" tone="accent" onPress={() => actions.incrementGoal(goal.id)} />
-                    ) : null}
-                  </View>
-                  <View style={styles.goalTrack}>
-                    <View style={[styles.goalFill, { width: `${(progress / goal.target) * 100}%` }]} />
-                  </View>
-                </Pressable>
-              );
-            })}
-          </Card>
-
-          <Card style={styles.card}>
-            <Text style={styles.eyebrow}>Sugestão para esta semana</Text>
-            <Text style={styles.suggestion}>
-              Caminhar 20 minutos depois do almoço nos dias de reunião.
-            </Text>
-
-            <View style={styles.ratingRow}>
-              <Text style={styles.rowDetail}>Foi útil?</Text>
-              <Spacer />
-              {RATINGS.map((option) => {
-                const selected = data.suggestionRating === option;
-                return (
-                  <Pressable
-                    key={option}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    onPress={() => actions.setSuggestionRating(selected ? null : option)}
-                    style={[styles.ratingChip, selected && styles.ratingChipSelected]}>
-                    <Text style={[styles.ratingText, selected && styles.ratingTextSelected]}>
-                      {option}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Card>
-
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Avaliações</Text>
-            </View>
-
-            {(Object.keys(ASSESSMENTS) as AssessmentKind[]).map((kind) => {
-              const definition = ASSESSMENTS[kind];
-              const last = data.assessments.find((item) => item.kind === kind);
-              return (
-                <Pressable
-                  key={kind}
-                  accessibilityRole="button"
-                  accessibilityHint={last ? 'Refazer avaliação' : 'Fazer avaliação'}
-                  onPress={() => router.push({ pathname: '/assessment', params: { kind } })}
-                  style={({ pressed }) => [styles.assessment, pressed && styles.pressed]}>
-                  <View style={[styles.assessmentBar, { backgroundColor: ASSESSMENT_COLORS[kind] }]} />
-                  <View style={styles.rowText}>
-                    <Text style={styles.assessmentTitle}>{definition.title}</Text>
-                    <Text style={styles.rowDetail}>
-                      {last ? `Última: ${formatNumericDate(new Date(last.at))}` : 'Ainda não feita'}
-                    </Text>
-                  </View>
-                  <Text style={styles.assessmentValue}>
-                    {last ? definition.describe(last.score) : 'Fazer'}
-                  </Text>
-                  <Chevron />
-                </Pressable>
-              );
-            })}
-          </Card>
-        </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+    <View style={styles.editor}>
+      <ChoiceChips label="Tipo de lembrete" options={KINDS} renderLabel={(value) => KIND_NAMES[value]} selected={[kind]} onToggle={pickKind} />
+      <Input accessibilityLabel="Título do lembrete" placeholder="Título" value={title} onChangeText={setTitle} />
+      {preset ? (
+        <Pressable accessibilityRole="button" onPress={() => setTimes(preset.times())} style={styles.presetButton}>
+          <Text style={styles.link}>Usar sugestão: {preset.label}</Text>
+        </Pressable>
+      ) : null}
+      <TimeList label="Horários" times={times} onChange={setTimes} />
+      <Button label="Adicionar lembrete" onPress={add} disabled={!title.trim() || times.length === 0} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
+function ReminderRow({ reminder }: { reminder: Reminder }) {
+  const styles = useStyles();
+  const { data, actions } = useUserData();
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(reminder.title);
+  const [times, setTimes] = useState(reminder.times);
+  const done = reminder.doneOn === toDayKey();
+  const quiet = data.settings.quietHours;
+  const deferred = reminder.times.filter((time) => deferPastQuietHours(time, quiet) !== time);
+
+  const save = () => {
+    actions.updateReminder(reminder.id, { title: title.trim() || reminder.title, times });
+    setEditing(false);
+  };
+
+  const remove = async () => {
+    if (await confirm('Remover lembrete', `Remover “${reminder.title}”?`, 'Remover')) actions.removeReminder(reminder.id);
+  };
+
+  return (
+    <View style={styles.reminder}>
+      <View style={styles.row}>
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: done }}
+          accessibilityHint="Marca como feito hoje"
+          onPress={() => actions.toggleReminderDone(reminder.id)}
+          style={styles.rowText}>
+          <Text style={[styles.rowTitle, !reminder.enabled && styles.muted]}>
+            {done ? '✓ ' : ''}
+            {reminder.title}
+          </Text>
+          <Text style={styles.rowDetail}>
+            {KIND_NAMES[reminder.kind]} · {reminder.times.join(', ') || 'sem horário'}
+          </Text>
+          {reminder.enabled && deferred.length ? (
+            <Text style={styles.rowDetail}>
+              {deferred.join(', ')} → adiado para {quiet.end} (silêncio noturno)
+            </Text>
+          ) : null}
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Editar ${reminder.title}`} onPress={() => setEditing((value) => !value)} style={styles.editButton}>
+          <Text style={styles.link}>{editing ? 'Fechar' : 'Editar'}</Text>
+        </Pressable>
+        <Toggle
+          accessibilityLabel={`Lembrete ${reminder.title}`}
+          value={reminder.enabled}
+          onValueChange={(enabled) => actions.updateReminder(reminder.id, { enabled })}
+        />
+      </View>
+
+      {editing ? (
+        <View style={styles.editor}>
+          <Input accessibilityLabel="Título do lembrete" value={title} onChangeText={setTitle} />
+          <TimeList label="Horários" times={times} onChange={setTimes} />
+          <View style={styles.timeRow}>
+            <Button label="Salvar" onPress={save} disabled={times.length === 0} style={styles.flex} />
+            <Button label="Excluir" variant="secondary" onPress={remove} style={styles.flex} />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const useStyles = makeStyles((c) => ({
+  flex: {
     flex: 1,
-    backgroundColor: MenteColors.background,
   },
-  safeArea: {
-    flex: 1,
+  pressed: {
+    opacity: 0.75,
   },
-  content: {
-    gap: 13,
-    paddingHorizontal: MenteSpacing.gutter,
-    paddingTop: 10,
-    paddingBottom: 24,
+  note: {
+    ...MenteType.small,
+    color: c.textMuted,
+  },
+  warning: {
+    gap: 10,
+    backgroundColor: c.amberSurface,
+  },
+  warningText: {
+    ...MenteType.caption,
+    color: c.amberText,
+  },
+  linkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 60,
+    paddingHorizontal: 16,
+    borderRadius: MenteRadius.card,
+    backgroundColor: c.surface,
   },
   card: {
     gap: 12,
@@ -307,137 +251,58 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     ...MenteType.sectionTitle,
-    color: MenteColors.text,
+    color: c.text,
   },
   link: {
-    ...MenteType.link,
-    color: MenteColors.accent,
+    ...MenteType.captionStrong,
+    color: c.accent,
+  },
+  reminder: {
+    gap: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: c.border,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  rowPressable: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  muted: {
-    color: MenteColors.textMuted,
-  },
-  form: {
-    gap: 8,
-  },
-  note: {
-    ...MenteType.tiny,
-    color: MenteColors.textMuted,
-  },
-  pressed: {
-    opacity: 0.75,
-  },
   rowText: {
     flex: 1,
+    minHeight: MIN_TOUCH,
+    justifyContent: 'center',
     gap: 2,
   },
   rowTitle: {
     ...MenteType.captionStrong,
-    fontSize: 14,
-    color: MenteColors.text,
+    color: c.text,
   },
   rowDetail: {
     ...MenteType.small,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
-  donePill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.greenSurface,
+  muted: {
+    color: c.textMuted,
   },
-  donePillText: {
-    ...MenteType.micro,
-    color: MenteColors.greenText,
+  editButton: {
+    minHeight: MIN_TOUCH,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
   },
-  divider: {
-    height: 1,
-    backgroundColor: MenteColors.border,
+  editor: {
+    gap: 10,
+    padding: 12,
+    borderRadius: MenteRadius.row,
+    borderWidth: 1,
+    borderColor: c.border,
   },
-  goal: {
-    gap: 7,
+  presetButton: {
+    minHeight: MIN_TOUCH,
+    justifyContent: 'center',
   },
-  goalHeader: {
+  timeRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  goalTitle: {
-    ...MenteType.small,
-    flexShrink: 1,
-    color: MenteColors.text,
-  },
-  goalProgress: {
-    ...MenteType.small,
-    color: MenteColors.textMuted,
-  },
-  goalTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: MenteColors.background,
-  },
-  goalFill: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: MenteColors.primary,
-  },
-  eyebrow: {
-    ...MenteType.link,
-    color: MenteColors.textMuted,
-  },
-  suggestion: {
-    ...MenteType.body,
-    color: MenteColors.text,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  ratingChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.background,
-  },
-  ratingChipSelected: {
-    backgroundColor: MenteColors.primary,
-  },
-  ratingText: {
-    ...MenteType.link,
-    color: MenteColors.textMuted,
-  },
-  ratingTextSelected: {
-    fontFamily: MenteType.captionStrong.fontFamily,
-    color: MenteColors.onPrimary,
-  },
-  assessment: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  assessmentBar: {
-    width: 3,
-    height: 28,
-    borderRadius: 2,
-  },
-  assessmentTitle: {
-    ...MenteType.caption,
-    fontFamily: MenteType.captionStrong.fontFamily,
-    color: MenteColors.text,
-  },
-  assessmentValue: {
-    ...MenteType.caption,
-    color: MenteColors.accent,
-  },
-});
+}));

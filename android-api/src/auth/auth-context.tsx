@@ -9,6 +9,7 @@ import {
   type SignUpInput,
   type User,
 } from '@/auth/types';
+import { isDeviceOffline } from '@/lib/offline';
 import { secureStorage } from '@/lib/storage';
 
 /** SecureStore keys may only contain alphanumerics, `.`, `-` and `_`. */
@@ -43,9 +44,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       const raw = await secureStorage.get(SESSION_KEY);
-      const stored = raw ? (JSON.parse(raw) as Session) : null;
+      let stored: Session | null = null;
+      try {
+        stored = raw ? (JSON.parse(raw) as Session) : null;
+      } catch {
+        // A corrupted session only means signing in again.
+      }
       if (!stored) {
         if (!cancelled) setStatus('signedOut');
+        return;
+      }
+
+      // Modo offline completo (RF-37): trust the cached session and never touch the network.
+      if (await isDeviceOffline()) {
+        if (cancelled) return;
+        setSession(stored);
+        setStatus('signedIn');
         return;
       }
 
@@ -96,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setStatus('signedOut');
       // Best effort: the local session is already gone even if the server call fails.
-      if (token) await authService.signOut(token).catch(() => {});
+      if (token && !(await isDeviceOffline())) await authService.signOut(token).catch(() => {});
     },
     updateProfile: async (patch) => {
       if (!session) return;

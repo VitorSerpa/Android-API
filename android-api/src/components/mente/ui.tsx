@@ -1,25 +1,26 @@
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  type TextInputProps,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, Text, TextInput, View, type TextInputProps, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Icon, type IconName } from '@/components/mente/icon';
-import { MenteColors, MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
+import { MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
+import { makeStyles, useColors } from '@/theme';
+
+/** Android's minimum touch target, in points (RNF-04). */
+export const MIN_TOUCH = 44;
+
+/** Extra reach for small text links and pills so they reach ~44 pt. */
+export const TOUCH_SLOP = { top: 14, bottom: 14, left: 10, right: 10 } as const;
 
 /** White rounded panel — the prototype's default container. */
-export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
+export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const styles = useStyles();
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
 /** Pushes whatever follows it to the far edge of a row. */
 export function Spacer() {
+  const styles = useStyles();
   return <View style={styles.spacer} />;
 }
 
@@ -28,6 +29,8 @@ export function Spacer() {
  * tabs, so there is usually nothing to pop — fall back to the first tab.
  */
 export function TopBar({ title, right }: { title: string; right?: ReactNode }) {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
 
   return (
@@ -38,7 +41,7 @@ export function TopBar({ title, right }: { title: string; right?: ReactNode }) {
         hitSlop={8}
         onPress={() => (router.canGoBack() ? router.back() : router.navigate('/home'))}
         style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-        <Icon name="chevronLeft" size={16} color={MenteColors.accent} />
+        <Icon name="chevronLeft" size={16} color={c.accent} />
       </Pressable>
 
       <Text style={styles.topBarTitle}>{title}</Text>
@@ -58,12 +61,13 @@ export function SectionHeader({
   action?: string;
   onPressAction?: () => void;
 }) {
+  const styles = useStyles();
   return (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <Spacer />
       {action ? (
-        <Pressable accessibilityRole="button" hitSlop={8} onPress={onPressAction}>
+        <Pressable accessibilityRole="button" hitSlop={TOUCH_SLOP} onPress={onPressAction}>
           <Text style={styles.link}>{action}</Text>
         </Pressable>
       ) : null}
@@ -81,6 +85,7 @@ export function Pill({
   tone?: 'muted' | 'accent' | 'positive';
   onPress?: () => void;
 }) {
+  const styles = useStyles();
   const pillStyle = [
     styles.pill,
     tone === 'accent' && styles.pillAccent,
@@ -102,7 +107,8 @@ export function Pill({
   return (
     <Pressable
       accessibilityRole="button"
-      hitSlop={6}
+      accessibilityLabel={label}
+      hitSlop={TOUCH_SLOP}
       onPress={onPress}
       style={({ pressed }) => [...pillStyle, pressed && styles.pressed]}>
       {text}
@@ -115,8 +121,8 @@ export function IconBubble({
   name,
   size = 29,
   glyphSize = 15,
-  background = MenteColors.background,
-  color = MenteColors.accent,
+  background,
+  color,
 }: {
   name: IconName;
   size?: number;
@@ -124,6 +130,10 @@ export function IconBubble({
   background?: string;
   color?: string;
 }) {
+  const styles = useStyles();
+  const c = useColors();
+  background ??= c.background;
+  color ??= c.accent;
   return (
     <View
       style={[
@@ -145,6 +155,7 @@ export function Toggle({
   onValueChange: (value: boolean) => void;
   accessibilityLabel?: string;
 }) {
+  const styles = useStyles();
   return (
     <Pressable
       accessibilityRole="switch"
@@ -152,7 +163,8 @@ export function Toggle({
       accessibilityState={{ checked: value }}
       // react-native-web ignores `accessibilityState`; `aria-checked` reaches both platforms.
       aria-checked={value}
-      hitSlop={6}
+      // 42×24 visually, 44×44 to the finger (RNF-04).
+      hitSlop={{ top: 10, bottom: 10, left: 1, right: 1 }}
       onPress={() => onValueChange(!value)}
       style={[styles.toggle, value && styles.toggleOn]}>
       <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
@@ -172,8 +184,9 @@ export function Button({
   onPress: () => void;
   variant?: 'primary' | 'secondary';
   disabled?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles();
   return (
     <Pressable
       accessibilityRole="button"
@@ -195,9 +208,11 @@ export function Button({
 
 /** Compact text input for forms that live inside a card. */
 export function Input({ style, ...props }: TextInputProps) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <TextInput
-      placeholderTextColor={MenteColors.textMuted}
+      placeholderTextColor={c.textMuted}
       style={[styles.input, props.multiline && styles.inputMultiline, style]}
       {...props}
     />
@@ -218,6 +233,7 @@ export function SettingRow({
   trailing?: ReactNode;
   onPress?: () => void;
 }) {
+  const styles = useStyles();
   const content = (
     <>
       <IconBubble name={icon} />
@@ -245,16 +261,18 @@ export function SettingRow({
 
 /** Uppercase header that opens each settings section. */
 export function SectionEyebrow({ children }: { children: string }) {
+  const styles = useStyles();
   return <Text style={styles.eyebrow}>{children}</Text>;
 }
 
 export function Chevron() {
-  return <Icon name="chevronRight" size={13} color={MenteColors.textMuted} />;
+  const c = useColors();
+  return <Icon name="chevronRight" size={13} color={c.textMuted} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   card: {
-    backgroundColor: MenteColors.surface,
+    backgroundColor: c.surface,
     borderRadius: MenteRadius.card,
     padding: MenteSpacing.cardPadding,
   },
@@ -272,11 +290,11 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 9,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.surface,
+    backgroundColor: c.surface,
   },
   topBarTitle: {
     ...MenteType.screenTitle,
-    color: MenteColors.text,
+    color: c.text,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -285,35 +303,35 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...MenteType.sectionTitle,
-    color: MenteColors.text,
+    color: c.text,
   },
   link: {
     ...MenteType.link,
-    color: MenteColors.accent,
+    color: c.accent,
   },
   pill: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.background,
+    backgroundColor: c.background,
   },
   pillAccent: {
-    backgroundColor: MenteColors.primary,
+    backgroundColor: c.primary,
   },
   pillPositive: {
-    backgroundColor: MenteColors.greenSurface,
+    backgroundColor: c.greenSurface,
   },
   pillText: {
     ...MenteType.tiny,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   pillTextAccent: {
     ...MenteType.tinyStrong,
-    color: MenteColors.onPrimary,
+    color: c.onPrimary,
   },
   pillTextPositive: {
     ...MenteType.tinyStrong,
-    color: MenteColors.greenText,
+    color: c.greenText,
   },
   bubble: {
     alignItems: 'center',
@@ -323,18 +341,18 @@ const styles = StyleSheet.create({
     width: 42,
     height: 24,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.border,
+    backgroundColor: c.border,
     justifyContent: 'center',
   },
   toggleOn: {
-    backgroundColor: MenteColors.primary,
+    backgroundColor: c.primary,
   },
   toggleKnob: {
     width: 18,
     height: 18,
     borderRadius: 9,
     marginLeft: 3,
-    backgroundColor: MenteColors.surface,
+    backgroundColor: c.surface,
   },
   toggleKnobOn: {
     marginLeft: 21,
@@ -345,28 +363,29 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: MenteRadius.button,
-    backgroundColor: MenteColors.primary,
+    backgroundColor: c.primary,
   },
   buttonSecondary: {
     borderWidth: 1,
-    borderColor: MenteColors.border,
-    backgroundColor: MenteColors.surface,
+    borderColor: c.border,
+    backgroundColor: c.surface,
   },
   buttonText: {
     ...MenteType.button,
     fontSize: 15,
-    color: MenteColors.onPrimary,
+    color: c.onPrimary,
   },
   buttonTextSecondary: {
-    color: MenteColors.accent,
+    color: c.accent,
   },
   input: {
     ...MenteType.body,
+    minHeight: MIN_TOUCH,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: MenteRadius.chip,
-    backgroundColor: MenteColors.background,
-    color: MenteColors.text,
+    backgroundColor: c.background,
+    color: c.text,
   },
   inputMultiline: {
     minHeight: 72,
@@ -376,6 +395,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 11,
+    minHeight: MIN_TOUCH,
     paddingVertical: 4,
   },
   settingRowText: {
@@ -384,14 +404,14 @@ const styles = StyleSheet.create({
   },
   settingRowTitle: {
     ...MenteType.captionStrong,
-    color: MenteColors.text,
+    color: c.text,
   },
   settingRowSubtitle: {
     ...MenteType.tiny,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   eyebrow: {
     ...MenteType.sectionEyebrow,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
-});
+}));

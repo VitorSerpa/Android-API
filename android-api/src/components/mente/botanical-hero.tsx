@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { MenteColors, MenteRadius } from '@/constants/mente-theme';
+import { MenteRadius } from '@/constants/mente-theme';
+import { makeStyles, useColors } from '@/theme';
 
 type Leaf = {
   /** Bounding box of the rotated ellipse, as laid out in Figma. */
@@ -50,9 +51,11 @@ const ELLIPSE = '50%' as const;
  * views instead of the exported SVGs — every shape is a flat-filled ellipse.
  */
 export function BotanicalHero() {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <LinearGradient
-      colors={MenteColors.heroGradient}
+      colors={c.heroGradient}
       locations={[0, 0.769]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
@@ -97,7 +100,7 @@ export function BotanicalHero() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   hero: {
     height: 168,
     width: '100%',
@@ -110,4 +113,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

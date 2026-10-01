@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { Pressable, Text, TextInput, View, type TextInputProps } from 'react-native';
 
-import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
+import { MenteRadius, MenteType } from '@/constants/mente-theme';
+import { makeStyles, useColors } from '@/theme';
 
 export type TextFieldProps = TextInputProps & {
   label: string;
@@ -12,6 +13,8 @@ export type TextFieldProps = TextInputProps & {
 };
 
 export function TextField({ label, secure = false, error, style, ...inputProps }: TextFieldProps) {
+  const c = useColors();
+  const styles = useStyles();
   const [revealed, setRevealed] = useState(false);
 
   return (
@@ -24,7 +27,7 @@ export function TextField({ label, secure = false, error, style, ...inputProps }
 
         <TextInput
           style={[styles.textInput, style]}
-          placeholderTextColor={MenteColors.textMuted}
+          placeholderTextColor={c.textMuted}
           secureTextEntry={secure && !revealed}
           {...inputProps}
         />
@@ -45,14 +48,14 @@ export function TextField({ label, secure = false, error, style, ...inputProps }
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   field: {
     gap: 8,
     width: '100%',
   },
   label: {
     ...MenteType.label,
-    color: MenteColors.text,
+    color: c.text,
   },
   input: {
     flexDirection: 'row',
@@ -61,15 +64,15 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: MenteRadius.input,
     borderWidth: 1,
-    borderColor: MenteColors.border,
-    backgroundColor: MenteColors.surface,
+    borderColor: c.border,
+    backgroundColor: c.surface,
   },
   inputError: {
-    borderColor: MenteColors.dangerText,
+    borderColor: c.dangerText,
   },
   error: {
     ...MenteType.small,
-    color: MenteColors.dangerText,
+    color: c.dangerText,
   },
   leadingIcon: {
     width: 15,
@@ -81,7 +84,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 0,
     ...MenteType.body,
-    color: MenteColors.text,
+    color: c.text,
   },
   revealToggle: {
     width: 14,
@@ -89,4 +92,4 @@ const styles = StyleSheet.create({
     borderRadius: '50%',
     backgroundColor: 'rgba(124, 153, 174, 0.6)',
   },
-});
+}));

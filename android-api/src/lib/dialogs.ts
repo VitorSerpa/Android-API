@@ -25,5 +25,22 @@ export function confirm(title: string, message: string, confirmLabel = 'Confirma
   );
 }
 
-export const comingSoon = (feature: string) =>
-  notify(feature, 'Esta funcionalidade chega em uma próxima versão.');
+
+/**
+ * Lets the user pick one of a few actions. On web, where `Alert` has no
+ * buttons, the first option is taken.
+ */
+export function choose<T extends string>(title: string, options: readonly { value: T; label: string }[]): Promise<T | null> {
+  if (Platform.OS === 'web') return Promise.resolve(options[0]?.value ?? null);
+  return new Promise((resolve) =>
+    Alert.alert(
+      title,
+      undefined,
+      [
+        ...options.map((option) => ({ text: option.label, onPress: () => resolve(option.value) })),
+        { text: 'Cancelar', style: 'cancel' as const, onPress: () => resolve(null) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(null) },
+    ),
+  );
+}

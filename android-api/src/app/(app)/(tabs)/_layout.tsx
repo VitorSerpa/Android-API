@@ -1,12 +1,10 @@
-import { Tabs, usePathname } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { MenteTabBar } from '@/components/mente/mente-tab-bar';
 import { ReliefFab } from '@/components/mente/relief-fab';
 
 export default function TabsLayout() {
-  const pathname = usePathname();
-
   return (
     <View style={styles.container}>
       <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <MenteTabBar {...props} />}>
@@ -17,8 +15,8 @@ export default function TabsLayout() {
         <Tabs.Screen name="profile" options={{ title: 'Perfil' }} />
       </Tabs>
 
-      {/* Ferramentas is the relief toolbox itself, so the shortcut is redundant there. */}
-      {pathname !== '/tools' ? <ReliefFab /> : null}
+      {/* RF-30 / CA-03: "Respirar agora" on every main screen, one tap to a 60 s session. */}
+      <ReliefFab />
     </View>
   );
 }

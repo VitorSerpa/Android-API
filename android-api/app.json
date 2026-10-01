@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "android-api",
+    "name": "Mente Equilibrada",
     "slug": "android-api",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -18,7 +18,18 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.oserpasteam.androidapi"
+      "package": "com.oserpasteam.androidapi",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.health.READ_SLEEP"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -36,7 +47,44 @@
       ],
       "expo-secure-store",
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "O Mente Equilibrada usa o microfone só enquanto você grava um áudio do diário."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite anexar fotos da galeria ao seu diário.",
+          "cameraPermission": "Permite tirar fotos para anexar ao seu diário."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Com a sua autorização, o local de um pico de ansiedade é salvo no registro."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#35607F"
+        }
+      ],
+      "expo-sharing",
+      "expo-sqlite",
+      "react-native-health-connect",
+      "./plugins/with-health-connect-min-sdk",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

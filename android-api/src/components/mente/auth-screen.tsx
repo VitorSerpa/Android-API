@@ -1,19 +1,11 @@
 import { Link, type Href } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BotanicalHero } from '@/components/mente/botanical-hero';
-import { MenteColors, MenteRadius, MenteType } from '@/constants/mente-theme';
+import { MenteRadius, MenteType } from '@/constants/mente-theme';
+import { makeStyles, useColors } from '@/theme';
 
 /**
  * Shared chrome for Entrar / Criar conta: hero, badge, title, the form fields
@@ -41,9 +33,10 @@ export function AuthScreen({
   footerHref: Href;
   children: ReactNode;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <View style={styles.screen}>
-      <StatusBar style="dark" />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
@@ -84,7 +77,7 @@ export function AuthScreen({
               onPress={onSubmit}
               style={({ pressed }) => [styles.submit, (pressed || busy) && styles.pressed]}>
               {busy ? (
-                <ActivityIndicator color={MenteColors.onPrimary} />
+                <ActivityIndicator color={c.onPrimary} />
               ) : (
                 <Text style={styles.submitText}>{submitLabel}</Text>
               )}
@@ -103,10 +96,10 @@ export function AuthScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   screen: {
     flex: 1,
-    backgroundColor: MenteColors.background,
+    backgroundColor: c.background,
   },
   safeArea: {
     flex: 1,
@@ -133,17 +126,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: MenteRadius.pill,
-    backgroundColor: MenteColors.badgeBackground,
+    backgroundColor: c.badgeBackground,
   },
   badgeDot: {
     width: 9,
     height: 9,
     borderRadius: '50%',
-    backgroundColor: MenteColors.badgeDot,
+    backgroundColor: c.badgeDot,
   },
   badgeText: {
     ...MenteType.badge,
-    color: MenteColors.accent,
+    color: c.accent,
   },
   header: {
     alignItems: 'center',
@@ -151,12 +144,12 @@ const styles = StyleSheet.create({
   },
   title: {
     ...MenteType.title,
-    color: MenteColors.text,
+    color: c.text,
     textAlign: 'center',
   },
   subtitle: {
     ...MenteType.subtitle,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
     textAlign: 'center',
     maxWidth: 310,
   },
@@ -167,12 +160,12 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: MenteRadius.chip,
     borderWidth: 1,
-    borderColor: MenteColors.dangerBorder,
-    backgroundColor: MenteColors.dangerSurface,
+    borderColor: c.dangerBorder,
+    backgroundColor: c.dangerSurface,
   },
   errorText: {
     ...MenteType.caption,
-    color: MenteColors.dangerText,
+    color: c.dangerText,
     textAlign: 'center',
   },
   submit: {
@@ -181,14 +174,14 @@ const styles = StyleSheet.create({
     minHeight: 56,
     paddingVertical: 17,
     borderRadius: MenteRadius.button,
-    backgroundColor: MenteColors.primary,
+    backgroundColor: c.primary,
   },
   pressed: {
     opacity: 0.85,
   },
   submitText: {
     ...MenteType.button,
-    color: MenteColors.onPrimary,
+    color: c.onPrimary,
   },
   footer: {
     flexDirection: 'row',
@@ -197,10 +190,10 @@ const styles = StyleSheet.create({
   },
   footerText: {
     ...MenteType.caption,
-    color: MenteColors.textMuted,
+    color: c.textMuted,
   },
   footerLink: {
     ...MenteType.captionStrong,
-    color: MenteColors.accent,
+    color: c.accent,
   },
-});
+}));
