@@ -6,10 +6,10 @@ import {
   legacyKeyFor,
   parseDocument,
   type UserDataRepository,
-} from '@/data/repository';
+} from '@/data/repository-shared';
 import type { UserData } from '@/data/types';
 
-export { DataAccessError } from '@/data/repository';
+export { DataAccessError } from '@/data/repository-shared';
 
 /**
  * Android: each user's document lives in a SQLite row. Every query runs inside
