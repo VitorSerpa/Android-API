@@ -1,4 +1,4 @@
-import { createAudioPlayer, setAudioModeAsync, useAudioPlayer } from 'expo-audio';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useEffect, useState } from 'react';
@@ -39,17 +39,21 @@ export default function PracticeScreen() {
   const mini = params.mini === '1';
   const { actions } = useUserData();
   const [done, setDone] = useState(false);
+  const [logged, setLogged] = useState(false);
   const [stars, setStars] = useState(0);
+  const [ratingId, setRatingId] = useState<string | undefined>();
 
   // RF-28 / CA-02: every finished session goes to the history with date, type and duration.
   const complete = (durationSec: number) => {
     if (durationSec > 0) actions.logPractice(tool, durationSec);
+    setLogged(durationSec > 0);
     setDone(true);
   };
 
+  // Changing the stars corrects this session's rating instead of adding another.
   const rate = (value: number) => {
     setStars(value);
-    actions.rateTechnique(tool, value);
+    setRatingId(actions.rateTechnique(tool, value, ratingId));
   };
 
   return (
@@ -59,7 +63,7 @@ export default function PracticeScreen() {
       {done ? (
         <Card style={styles.doneCard}>
           <Icon name="heart" size={30} color={c.greenText} />
-          <Text style={styles.doneTitle}>Prática registrada</Text>
+          <Text style={styles.doneTitle}>{logged ? 'Prática registrada' : 'Prática encerrada'}</Text>
           <Text style={styles.doneText}>Que bom que você reservou esse momento para você.</Text>
           <Text style={styles.question}>Quão útil foi {TOOL_NAMES[tool].toLowerCase()} agora?</Text>
           <StarRating value={stars} onChange={rate} label={`Avaliar ${TOOL_NAMES[tool]}`} />
@@ -102,6 +106,24 @@ const MEDITATION_PROMPTS = [
 const PROMPT_EVERY_SEC = 45;
 
 /**
+ * The end bell gets its own player: finishing unmounts the meditation (and any
+ * player created with a hook) at once, so it frees itself after ringing instead.
+ */
+function ringBell() {
+  const player = createAudioPlayer(require('@/assets/audio/bell.wav'));
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    subscription.remove();
+    player.remove();
+  };
+  const subscription = player.addListener('playbackStatusUpdate', (status) => status.didJustFinish && release());
+  setTimeout(release, 15_000);
+  player.play();
+}
+
+/**
  * RF-27: guided by pre-loaded audio — a bundled ambient track plays in a loop
  * while a pt-BR voice reads the guidance, all without internet. A soft bell
  * marks the end of the countdown.
@@ -122,7 +144,6 @@ function Meditation({ initialMinutes, onComplete }: PracticeProps & { initialMin
     player.volume = 0.5;
     return player;
   });
-  const bell = useAudioPlayer(require('@/assets/audio/bell.wav'));
   const total = minutes * 60;
   const started = elapsed > 0 || running;
   const promptIndex = Math.floor(elapsed / PROMPT_EVERY_SEC) % MEDITATION_PROMPTS.length;
@@ -153,7 +174,7 @@ function Meditation({ initialMinutes, onComplete }: PracticeProps & { initialMin
   useFinishAt(elapsed >= total, () => {
     setRunning(false);
     Speech.stop();
-    bell.seekTo(0).then(() => bell.play()).catch(() => {});
+    ringBell();
     onComplete(total);
   });
 

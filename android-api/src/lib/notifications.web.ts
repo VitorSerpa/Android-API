@@ -19,10 +19,11 @@ export async function syncNotifications(_data: UserData): Promise<'ok' | 'denied
   return 'empty';
 }
 export async function dismissNotification(_identifier: string) {}
+export async function clearAllNotifications() {}
 
 export type NotificationResponse = {
   actionIdentifier: string;
-  notification: { request: { identifier: string; content: { data: Record<string, unknown> } } };
+  notification: { date?: number; request: { identifier: string; content: { data: Record<string, unknown> } } };
 };
 export const addResponseListener = (_listener: (response: NotificationResponse) => void) => ({ remove() {} });
 export const getLastResponse = (): NotificationResponse | null => null;

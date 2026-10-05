@@ -27,7 +27,7 @@ export default function SettingsScreen() {
   const { prefs, setPrefs, scheme } = useTheme();
   const { data, actions } = useUserData();
   const { settings } = data;
-  const rest = settings.digitalRest;
+  // Descanso digital desativado: const rest = settings.digitalRest;
   const [busy, setBusy] = useState(false);
 
   const toggleLocation = async (enabled: boolean) => {
@@ -123,6 +123,7 @@ export default function SettingsScreen() {
 
       <ProfilesCard />
 
+      {/* Descanso digital desativado (RF-53). Para reativar, descomente este card, `rest` acima e o <DigitalRestGate> em (app)/_layout.tsx.
       <Card style={styles.card}>
         <SectionEyebrow>DESCANSO DIGITAL</SectionEyebrow>
         <SettingRow
@@ -140,6 +141,7 @@ export default function SettingsScreen() {
           </View>
         ) : null}
       </Card>
+      */}
 
       <Card style={styles.card}>
         <SectionEyebrow>PRIVACIDADE</SectionEyebrow>
@@ -150,7 +152,7 @@ export default function SettingsScreen() {
           subtitle={
             settings.offlineMode
               ? 'Ativo: os dados ficam só neste aparelho e o app não faz nenhuma requisição de rede.'
-              : 'Desativado: grupos, convites e integrações podem usar a internet.'
+              : 'Desativado: o login e a localização das crises podem usar a internet.'
           }
           trailing={
             <Toggle accessibilityLabel="Modo offline completo" value={settings.offlineMode} onValueChange={(offlineMode) => actions.updateSettings({ offlineMode })} />
@@ -167,7 +169,7 @@ export default function SettingsScreen() {
       <Card style={styles.card}>
         <SectionEyebrow>MEUS DADOS</SectionEyebrow>
         <Text style={styles.detail}>
-          Exporta tudo — check-ins, saúde, diário com fotos e áudios, práticas, testes, metas, lembretes, medicamentos e crises — em um único arquivo JSON,
+          Exporta tudo — check-ins, saúde, diário com fotos e áudios, práticas, testes, metas e crises — em um único arquivo JSON,
           que pode ser importado em outro aparelho.
         </Text>
         <Button label={busy ? 'Exportando…' : 'Exportar todos os dados (JSON)'} onPress={doExport} disabled={busy} />

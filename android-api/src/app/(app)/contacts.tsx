@@ -44,7 +44,7 @@ export default function ContactsScreen() {
             <TopBar title="Contatos de apoio" />
 
             <Text style={styles.intro}>
-              Pessoas para quem você pode ligar num momento difícil. Elas aparecem no Modo crise.
+              Pessoas para quem você pode ligar num momento difícil. Elas aparecem no modo de emergência (“Preciso de ajuda agora”).
             </Text>
 
             <Card style={styles.card}>

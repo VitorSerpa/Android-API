@@ -162,8 +162,9 @@ export default function HistoryScreen() {
             <View style={styles.averageValueRow}>
               <Text style={styles.averageValue}>{formatScore(average.current)}</Text>
               {formatDelta(average.delta) ? (
-                <View style={styles.deltaPill}>
-                  <Text style={styles.deltaText}>{formatDelta(average.delta)}</Text>
+                // Mood: a drop is shown as a warning, not in the "good" green.
+                <View style={[styles.deltaPill, average.delta! < 0 && styles.deltaPillDown]}>
+                  <Text style={[styles.deltaText, average.delta! < 0 && styles.deltaTextDown]}>{formatDelta(average.delta)}</Text>
                 </View>
               ) : null}
             </View>
@@ -381,6 +382,12 @@ const useStyles = makeStyles((c) => ({
   deltaText: {
     ...MenteType.tinyStrong,
     color: c.greenText,
+  },
+  deltaPillDown: {
+    backgroundColor: c.dangerSurface,
+  },
+  deltaTextDown: {
+    color: c.dangerText,
   },
   monthHeader: {
     flexDirection: 'row',

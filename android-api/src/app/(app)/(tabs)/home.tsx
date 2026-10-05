@@ -1,5 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth';
@@ -10,17 +9,16 @@ import { Card, MIN_TOUCH, SectionHeader, Spacer } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
 import {
   dayAverages,
-  dosesOn,
+  // dosesOn, — medicamentos desativados
   formatDecimal,
   latestCheckIn,
   moodState,
   suggestionFor,
   TOOL_NAMES,
 } from '@/data/insights';
-import { randomAffirmation } from '@/data/phrases';
 import { useUserData } from '@/data/user-data-context';
-import { WEEKDAY_INITIALS, formatLongDate, formatTime, fromDayKey, lastDays, toDayKey } from '@/lib/dates';
-import { dismissNotification, medicationNotificationId } from '@/lib/notifications';
+import { WEEKDAY_INITIALS, formatLongDate, fromDayKey, lastDays, toDayKey } from '@/lib/dates';
+// import { dismissNotification, medicationNotificationId } from '@/lib/notifications';
 import { makeStyles, useColors } from '@/theme';
 
 /** Tallest bar in the 7-day chart, in points — a 5/5 mood. */
@@ -36,22 +34,12 @@ export default function HomeScreen() {
   const { data, actions } = useUserData();
   const today = toDayKey();
 
-  // RF-40 / CA-02: a (possibly) different affirmation every time Início opens.
-  const [affirmation, setAffirmation] = useState(() => randomAffirmation(data));
-  useFocusEffect(
-    useCallback(() => {
-      setAffirmation((current) => randomAffirmation(data, current.id));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []),
-  );
-  const favorite = data.favoriteAffirmations.includes(affirmation.id);
-
   const averages = dayAverages(data, today);
   const latest = latestCheckIn(data);
   const health = data.health[today];
   const water = data.water[today] ?? 0;
   const suggestion = suggestionFor(data);
-  const doses = dosesOn(data, today);
+  // Medicamentos desativados: const doses = dosesOn(data, today);
   const firstName = user?.name.split(' ')[0] ?? '';
 
   const metrics = [
@@ -71,10 +59,11 @@ export default function HomeScreen() {
     };
   });
 
-  const takeDose = (medicationId: string, time: string) => {
-    actions.recordIntake(medicationId, today, time);
-    dismissNotification(medicationNotificationId(medicationId, time)).catch(() => {});
-  };
+  // Medicamentos desativados:
+  // const takeDose = (medicationId: string, time: string) => {
+  //   actions.recordIntake(medicationId, today, time);
+  //   dismissNotification(medicationNotificationId(medicationId, time)).catch(() => {});
+  // };
 
   return (
     <Screen>
@@ -98,27 +87,6 @@ export default function HomeScreen() {
         <Icon name="alert" size={17} color={c.dangerText} cutColor={c.dangerSurface} />
         <Text style={styles.helpButtonText}>Preciso de ajuda agora</Text>
       </Pressable>
-
-      <View style={styles.affirmationCard}>
-        <Text style={styles.affirmationEyebrow}>AFIRMAÇÃO DE HOJE</Text>
-        <Text style={styles.affirmationText}>{affirmation.text}</Text>
-        <View style={styles.affirmationActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: favorite }}
-            accessibilityLabel={favorite ? 'Remover das favoritas' : 'Salvar como favorita'}
-            onPress={() => actions.toggleFavoriteAffirmation(affirmation.id)}
-            style={styles.affirmationButton}>
-            <Text style={styles.affirmationButtonText}>{favorite ? '★ Favorita' : '☆ Favoritar'}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setAffirmation((current) => randomAffirmation(data, current.id))}
-            style={styles.affirmationButton}>
-            <Text style={styles.affirmationButtonText}>Outra</Text>
-          </Pressable>
-        </View>
-      </View>
 
       <Card style={styles.summaryCard}>
         <SectionHeader title="Resumo de hoje" action="Ver dia" onPressAction={() => router.push({ pathname: '/day/[day]', params: { day: today } })} />
@@ -182,6 +150,7 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      {/* Medicamentos desativados (RF-17/RF-18). Para reativar, descomente este card, `doses`, `takeDose` e os imports.
       {doses.length ? (
         <Card style={styles.dosesCard}>
           <SectionHeader title="Medicamentos de hoje" action="Gerenciar" onPressAction={() => router.push('/medications')} />
@@ -203,6 +172,7 @@ export default function HomeScreen() {
           ))}
         </Card>
       ) : null}
+      */}
 
       <View style={styles.suggestionCard}>
         <View style={styles.suggestionHeader}>
@@ -269,34 +239,6 @@ const useStyles = makeStyles((c) => ({
     ...MenteType.badge,
     letterSpacing: 0.6,
     color: c.accent,
-  },
-  affirmationCard: {
-    gap: 8,
-    padding: 16,
-    borderRadius: MenteRadius.card,
-    backgroundColor: c.purpleSurface,
-  },
-  affirmationEyebrow: {
-    ...MenteType.sectionEyebrow,
-    color: c.purpleText,
-  },
-  affirmationText: {
-    ...MenteType.sectionTitle,
-    fontSize: 17,
-    lineHeight: 24,
-    color: c.purpleText,
-  },
-  affirmationActions: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  affirmationButton: {
-    minHeight: MIN_TOUCH,
-    justifyContent: 'center',
-  },
-  affirmationButtonText: {
-    ...MenteType.captionStrong,
-    color: c.purpleText,
   },
   summaryCard: {
     gap: 14,

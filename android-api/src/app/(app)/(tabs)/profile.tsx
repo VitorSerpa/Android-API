@@ -31,7 +31,7 @@ export default function ProfileScreen() {
   const [generating, setGenerating] = useState(false);
 
   const days = user ? daysBetween(new Date(user.createdAt), new Date()) + 1 : 0;
-  const activeReminders = data.reminders.filter((item) => item.enabled).length;
+  // Lembretes desativados: const activeReminders = data.reminders.filter((item) => item.enabled).length;
 
   const saveName = async () => {
     const error = validateName(name);
@@ -113,8 +113,10 @@ export default function ProfileScreen() {
 
       <Card style={styles.section}>
         <SectionEyebrow>ROTINA E EVOLUÇÃO</SectionEyebrow>
+        {/* Lembretes e medicamentos desativados (alertas removidos do app).
         <SettingRow icon="bell" title="Lembretes" subtitle={`${plural(activeReminders, 'lembrete ativo', 'lembretes ativos')} · silêncio noturno ${data.settings.quietHours.enabled ? `${data.settings.quietHours.start}–${data.settings.quietHours.end}` : 'desligado'}`} trailing={<Chevron />} onPress={() => router.push('/reminders')} />
         <SettingRow icon="clipboard" title="Medicamentos" subtitle={data.medications.length ? plural(data.medications.length, 'cadastrado', 'cadastrados') : 'Horário, dosagem e confirmação'} trailing={<Chevron />} onPress={() => router.push('/medications')} />
+        */}
         <SettingRow icon="target" title="Metas e autoavaliações" subtitle={`${plural(data.goals.length, 'meta', 'metas')} · estresse, WHO-5 e resiliência`} trailing={<Chevron />} onPress={() => router.push('/wellbeing')} />
       </Card>
 
@@ -139,20 +141,22 @@ export default function ProfileScreen() {
           trailing={<Chevron />}
           onPress={() => router.push('/contacts')}
         />
+        {/* Pessoa de confiança e integrações desativadas (tela removida do app).
         <SettingRow
           icon="people"
-          title="Grupos, pessoa de confiança e integrações"
-          subtitle="Grupos anônimos · resumo semanal · Spotify · sono do relógio"
+          title="Pessoa de confiança e integrações"
+          subtitle="Resumo semanal · Spotify · sono do relógio"
           trailing={<Chevron />}
           onPress={() => router.push('/community')}
         />
+        */}
       </Card>
 
       <Card style={styles.section}>
         <SectionEyebrow>CONFIGURAÇÕES</SectionEyebrow>
         <SettingRow
           icon="palette"
-          title="Aparência, perfis e descanso digital"
+          title="Aparência e perfis"
           subtitle={`${PALETTE_NAMES[prefs.palette]} · ${plural(data.profiles.length, 'perfil de vida', 'perfis de vida')}`}
           trailing={<Chevron />}
           onPress={() => router.push('/settings')}

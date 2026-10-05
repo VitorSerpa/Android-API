@@ -1,6 +1,6 @@
 /**
- * Client for the Node.js server in `/server` (US-13): anonymous support
- * groups over WebSocket and supporter invites. Configure it with
+ * Client for the Node.js server in `/server` (US-13): supporter invites (and
+ * the anonymous support groups over WebSocket, currently hidden in the app). Configure it with
  * `EXPO_PUBLIC_API_URL` (e.g. `http://10.0.2.2:3000` on the Android emulator).
  */
 

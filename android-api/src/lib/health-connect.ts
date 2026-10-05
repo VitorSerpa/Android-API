@@ -31,7 +31,7 @@ export async function healthConnectAvailability(): Promise<Availability> {
     const status = await hc.getSdkStatus();
     if (status === hc.SdkAvailabilityStatus.SDK_AVAILABLE) return 'available';
     if (status === hc.SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) return 'needs-install';
-    return 'needs-install';
+    return 'unsupported';
   } catch {
     return 'unsupported';
   }

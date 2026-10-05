@@ -51,7 +51,7 @@ export function allAffirmations(data: UserData): Affirmation[] {
   ];
 }
 
-/** A random affirmation, avoiding `exceptId` so each opening can differ (CA-02). */
+/** A random affirmation, avoiding `exceptId` so "Outra afirmação" always changes it. */
 export function randomAffirmation(data: UserData, exceptId?: string): Affirmation {
   const pool = allAffirmations(data);
   const candidates = pool.length > 1 ? pool.filter((item) => item.id !== exceptId) : pool;

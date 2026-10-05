@@ -9,6 +9,7 @@ import {
   type SignUpInput,
   type User,
 } from '@/auth/types';
+import { clearAllNotifications } from '@/lib/notifications';
 import { isDeviceOffline } from '@/lib/offline';
 import { secureStorage } from '@/lib/storage';
 
@@ -106,11 +107,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp: async (input) => start(await authService.signUp(input)),
     signOut: async () => {
       const token = session?.token;
+      // This user's reminders and medication alerts must not keep firing, nor a
+      // pending "Tomei" be recorded into the next account.
+      await clearAllNotifications().catch((error) => console.warn('Falha ao limpar notificações', error));
       await persist(null);
       setSession(null);
       setStatus('signedOut');
-      // Best effort: the local session is already gone even if the server call fails.
-      if (token && !(await isDeviceOffline())) await authService.signOut(token).catch(() => {});
+      // Firebase signs out locally (no network), so it runs in offline mode too;
+      // best effort, the app's own session is already gone.
+      if (token) await authService.signOut(token).catch(() => {});
     },
     updateProfile: async (patch) => {
       if (!session) return;

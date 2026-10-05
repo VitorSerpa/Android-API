@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { AudioClip, AudioRecorderPanel } from '@/components/mente/audio';
@@ -82,13 +82,24 @@ function FreeWriting() {
   const [dirty, setDirty] = useState(false);
   const [recording, setRecording] = useState(false);
 
+  // The open entry was deleted (e.g. from "Entradas recentes"): start blank
+  // instead of letting the next keystroke or autosave write it back.
+  const deleted = entryId !== null && !entry;
+  if (deleted) {
+    setEntryId(null);
+    setText('');
+    setDirty(false);
+  }
+
   /** Persists the text; creates the entry the first time. Returns its id. */
   const persist = useCallback(
     (force = false) => {
-      if (!force && !dirty) return entryId;
-      if (!entryId && !text.trim() && !force) return null;
+      // A deleted entry is never saved again; forced saves start a new one.
+      const currentId = entry ? entryId : null;
+      if (!force && (!dirty || deleted)) return currentId;
+      if (!currentId && !text.trim() && !force) return null;
       const id = actions.saveDiaryEntry({
-        id: entryId ?? undefined,
+        id: currentId ?? undefined,
         day: entry?.day ?? toDayKey(),
         kind: 'free',
         profileId,
@@ -101,7 +112,7 @@ function FreeWriting() {
       setDirty(false);
       return id;
     },
-    [actions, dirty, entry, entryId, profileId, text],
+    [actions, deleted, dirty, entry, entryId, profileId, text],
   );
 
   useAutosave(dirty, () => persist());
@@ -112,6 +123,31 @@ function FreeWriting() {
       if (!dirty && entry && entry.text !== text) setText(entry.text);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [entry?.updatedAt]),
+  );
+
+  // A blank editor that sent the user to full screen: pick up the entry that
+  // was created there, so typing here doesn't start a second one.
+  const current = useRef({ dirty, entryId, text, diary: data.diary });
+  useEffect(() => {
+    current.current = { dirty, entryId, text, diary: data.diary };
+  });
+  const leftAt = useRef<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const since = leftAt.current;
+      const now = current.current;
+      if (since && !now.dirty && !now.entryId && !now.text.trim()) {
+        const created = latestFreeToday(now.diary);
+        if (created && created.createdAt >= since) {
+          setEntryId(created.id);
+          setText(created.text);
+          setProfileId(created.profileId);
+        }
+      }
+      return () => {
+        leftAt.current = new Date().toISOString();
+      };
+    }, []),
   );
 
   const open = (next: DiaryEntry | null) => {
@@ -348,7 +384,7 @@ function DreamForm() {
       <ChoiceChips label="Emoção do sonho" options={DREAM_EMOTIONS} selected={emotion ? [emotion] : []} onToggle={setEmotion} />
       <Button label="Salvar sonho" onPress={save} disabled={!canSave} />
       <Text style={styles.detail}>
-        {canSave ? '' : 'Descreva o sonho e escolha uma emoção para salvar.'} {dreams ? `${dreams} sonhos registrados.` : ''}
+        {canSave ? '' : 'Descreva o sonho e escolha uma emoção para salvar.'} {dreams ? `${dreams} ${dreams === 1 ? 'sonho registrado' : 'sonhos registrados'}.` : ''}
       </Text>
     </Card>
   );
@@ -410,6 +446,25 @@ function RecentEntries() {
             <Text style={styles.entryExcerpt} numberOfLines={2}>
               {entry.kind === 'gratitude' ? entry.gratitude?.join(' · ') : entry.text.trim()}
             </Text>
+            {entry.attachments.length ? (
+              <View style={styles.attachments}>
+                {entry.attachments.map((attachment) =>
+                  attachment.kind === 'photo' ? (
+                    <Image
+                      key={attachment.id}
+                      source={{ uri: attachment.uri }}
+                      style={styles.entryPhoto}
+                      contentFit="cover"
+                      accessibilityLabel="Foto anexada"
+                    />
+                  ) : (
+                    <View key={attachment.id} style={styles.entryAudio}>
+                      <AudioClip uri={attachment.uri} durationSec={attachment.durationSec} />
+                    </View>
+                  ),
+                )}
+              </View>
+            ) : null}
           </View>
         </Pressable>
       ))}
@@ -418,6 +473,7 @@ function RecentEntries() {
 }
 
 const PHOTO = 88;
+const ENTRY_PHOTO = 64;
 
 const useStyles = makeStyles((c) => ({
   segmented: {
@@ -593,6 +649,14 @@ const useStyles = makeStyles((c) => ({
   entryExcerpt: {
     ...MenteType.caption,
     color: c.text,
+  },
+  entryPhoto: {
+    width: ENTRY_PHOTO,
+    height: ENTRY_PHOTO,
+    borderRadius: MenteRadius.chip,
+  },
+  entryAudio: {
+    width: '100%',
   },
   pressed: {
     opacity: 0.75,

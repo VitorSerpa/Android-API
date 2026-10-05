@@ -1,11 +1,11 @@
 # Mente Equilibrada
 
-Aplicativo Android de autocuidado emocional: check-in de humor, diário com fotos e áudios, saúde física, lembretes e medicamentos, histórico com gráficos, respiração e meditação, modo de emergência, PIN e modo offline, relatório em PDF, metas e autoavaliações, personalização e grupos de apoio anônimos.
+Aplicativo Android de autocuidado emocional: check-in de humor, diário com fotos e áudios, saúde física, histórico com gráficos, respiração e meditação, modo de emergência, PIN e modo offline, relatório em PDF, metas e autoavaliações e personalização. Estão desativados no app por enquanto, com o código comentado: lembretes/medicamentos (alertas) e a tela *Pessoa de confiança e integrações* (grupos de apoio, convites, Spotify e sono do Health Connect) — ver `background-tasks.tsx`, `community.tsx`, Início e Perfil.
 
 | Pasta | Conteúdo |
 |---|---|
 | [`android-api/`](android-api/README.md) | App (Expo SDK 57 / React Native). Organização do código e variáveis de ambiente no README da pasta. |
-| [`server/`](server/README.md) | Backend Node.js: grupos de apoio em tempo real (WebSocket) e convites para pessoa de confiança. |
+| [`server/`](server/README.md) | Backend Node.js: convites para pessoa de confiança e grupos de apoio em tempo real. **Hoje não é usado pelo app** (essas telas estão desativadas). |
 | [`docs/`](docs/backlog_menteequilibrada_completo.pdf) | Backlog do produto em PDF. |
 
 ## Como rodar (emulador do Android Studio)
@@ -55,10 +55,9 @@ EXPO_PUBLIC_FIREBASE_API_KEY=demo-key
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-mente
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=demo-mente.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
-EXPO_PUBLIC_API_URL=http://10.0.2.2:3000
 ```
 
-`demo-key`/`demo-mente` não são credenciais reais: com `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` definido, o login fala só com o emulador local. `10.0.2.2` é o endereço do computador visto de dentro do emulador Android.
+`demo-key`/`demo-mente` não são credenciais reais: com `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` definido, o login fala só com o emulador local.
 
 ### 4. Iniciar o emulador Android
 
@@ -80,14 +79,14 @@ npx firebase-tools@13 emulators:start --only auth --project demo-mente
 
 Precisa de Java no `PATH` (passo 1). As contas criadas ficam só na memória e somem ao fechar o terminal; crie uma conta nova no app a cada vez.
 
-**Terminal B — backend (grupos e convites):**
+**Terminal B — backend (opcional, hoje sem uso):**
 
 ```bash
 cd server
 npm start
 ```
 
-Opcional: só a tela *Perfil → Grupos, pessoa de confiança e integrações* depende dele.
+Não é preciso rodar: a tela de convites e integrações, única que usava o backend, está desativada no app. Se ela for reativada, defina também `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000` no `.env.local` (`10.0.2.2` é o computador visto de dentro do emulador).
 
 ### 6. Rodar o app (Terminal C)
 
@@ -99,7 +98,7 @@ adb reverse tcp:9099 tcp:9099   # deixa o app alcançar o Auth Emulator
 npx expo run:android
 ```
 
-Na **primeira vez**, o `run:android` gera a pasta `android/`, compila o app (cerca de 10 minutos), instala no emulador, inicia o Metro e abre o app. Pronto: crie uma conta em **Criar conta** e permita as notificações quando o Android pedir.
+Na **primeira vez**, o `run:android` gera a pasta `android/`, compila o app (cerca de 10 minutos), instala no emulador, inicia o Metro e abre o app. Pronto: crie uma conta em **Criar conta**.
 
 ### Nas próximas vezes
 
@@ -118,8 +117,6 @@ Só é preciso rodar `npx expo run:android` de novo depois de mudar o `app.json`
 | Sintoma | Solução |
 |---|---|
 | Login fica carregando ou dá erro de rede | O Terminal A não está rodando, ou falta o `adb reverse tcp:9099 tcp:9099` (repita após reiniciar o emulador). |
-| "Servidor não configurado" na tela de grupos | Falta `EXPO_PUBLIC_API_URL` no `.env.local`; reinicie o Metro depois de editar. |
-| Grupos não carregam | O Terminal B não está rodando. |
 | `SDK location not found` ou `adb: command not found` | `ANDROID_HOME`/`PATH` do passo 1. |
 | Erro de versão do Java no build ou no Auth Emulator | Aponte `JAVA_HOME` para o `jbr` do Android Studio. |
 | Erros de "module not found" | Rode `npm ci` em `android-api` de novo. |
@@ -171,6 +168,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-02 — O campo de observações da ansiedade é opcional e o registro é salvo mesmo vazio.
 - CA-03 — Valores fora das escalas (humor 1-5, ansiedade 0-10, energia 1-5) não podem ser selecionados.
 - CA-04 — Um lembrete configurado dispara a notificação no horário definido e, ao tocá-la, abre a tela de check-in.
+
+> **Situação atual:** os lembretes estão desativados no app (ver US-04), então o CA-04 não está mais atendido.
 - CA-05 — Após salvar, o resumo do dia é exibido com o humor médio recalculado e uma frase de incentivo.
 
 </details>
@@ -244,6 +243,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-01 — A notificação de medicação permanece na barra de status até o usuário tocar em “tomei”, e a confirmação é gravada com horário.
 - CA-02 — Cada tipo de lembrete pode ser ativado, editado e desativado separadamente.
 - CA-03 — Nenhuma notificação é exibida dentro do horário de silêncio; lembretes desse período são adiados para o fim do silêncio.
+
+> **Situação atual:** lembretes, alarmes e medicamentos (RF-17 a RF-20) foram retirados do app. As telas `reminders.tsx` e `medications.tsx` continuam no código, sem acesso, e o agendamento está comentado em `background-tasks.tsx`; ao abrir, o app apaga qualquer alerta deixado por versões anteriores.
 
 </details>
 
@@ -360,6 +361,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-02 — Cada abertura da tela inicial pode mostrar uma afirmação diferente.
 - CA-03 — Frases marcadas como favoritas aparecem na lista pessoal e podem ser removidas.
 
+> **Situação atual:** o card de afirmação da tela inicial foi retirado. As afirmações aleatórias continuam na prática *Ferramentas → Afirmações*, com "Outra afirmação" e favoritas; RF-40 e o CA-02 (tela inicial) não estão mais atendidos como descritos.
+
 </details>
 
 <details>
@@ -427,6 +430,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-02 — O modo escuro liga e desliga sozinho no horário noturno definido.
 - CA-03 — Durante o descanso digital, somente a tela de respiração fica acessível.
 
+> **Situação atual:** o descanso digital (RF-53 / CA-03) está desativado no app — a opção saiu das Configurações e o `DigitalRestGate` está comentado em `android-api/src/app/(app)/_layout.tsx`.
+
 </details>
 
 <details>
@@ -448,6 +453,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-01 — As mensagens do grupo chegam aos demais membros em tempo real, sem mostrar nome ou dados do autor.
 - CA-02 — O link de convite pode ser enviado por aplicativos de mensagem e o convite pode ser revogado.
 - CA-03 — Após autorizar o Google Fit, as horas de sono importadas aparecem nos registros de sono.
+
+> **Situação atual:** toda a US-13 está desativada no app. A tela *Pessoa de confiança e integrações* (`android-api/src/app/(app)/community.tsx`: grupos, convites, Spotify e sono do Health Connect) não tem mais acesso, e o envio do resumo semanal e a importação de sono estão comentados em `background-tasks.tsx`. O backend continua em `server/`.
 
 </details>
 

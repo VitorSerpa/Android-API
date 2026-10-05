@@ -61,17 +61,35 @@ export async function ensurePermission(): Promise<boolean> {
   return (await Notifications.requestPermissionsAsync()).granted;
 }
 
+/** Runs one sync at a time, so an older run can't reschedule what a newer one removed. */
+let syncQueue: Promise<unknown> = Promise.resolve();
+
 /**
  * Replaces every scheduled notification with the plan for `data`. Daily
  * triggers keep firing without the app open; call again whenever reminders,
  * medications or quiet hours change.
  */
-export async function syncNotifications(data: UserData): Promise<'ok' | 'denied' | 'empty'> {
+export function syncNotifications(data: UserData): Promise<'ok' | 'denied' | 'empty'> {
+  const run = syncQueue.then(() => scheduleAll(data));
+  syncQueue = run.catch(() => {});
+  return run;
+}
+
+async function scheduleAll(data: UserData): Promise<'ok' | 'denied' | 'empty'> {
   quietHours = data.settings.quietHours;
   const plan = planNotifications(data);
 
   await configureNotifications();
   await Notifications.cancelAllScheduledNotificationsAsync();
+  // A sticky medication notification already on screen outlives its trigger:
+  // drop the ones whose medication or time was removed, disabled or changed.
+  const planned = new Set(plan.map((item) => item.identifier));
+  const presented = await Notifications.getPresentedNotificationsAsync();
+  await Promise.all(
+    presented
+      .filter((item) => item.request.identifier.startsWith('med:') && !planned.has(item.request.identifier))
+      .map((item) => Notifications.dismissNotificationAsync(item.request.identifier)),
+  );
   if (!plan.length) return 'empty';
   if (!(await ensurePermission())) return 'denied';
 
@@ -95,6 +113,17 @@ export async function syncNotifications(data: UserData): Promise<'ok' | 'denied'
     });
   }
   return 'ok';
+}
+
+/** On sign-out: nothing of this user may keep firing, stay on screen or be handled by the next one. */
+export function clearAllNotifications(): Promise<void> {
+  const run = syncQueue.then(async () => {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    await Notifications.dismissAllNotificationsAsync();
+    Notifications.clearLastNotificationResponse();
+  });
+  syncQueue = run.catch(() => {});
+  return run;
 }
 
 /** Removes a shown notification, e.g. the sticky medication one once the dose is confirmed. */

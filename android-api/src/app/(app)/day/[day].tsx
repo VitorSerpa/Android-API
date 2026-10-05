@@ -9,7 +9,7 @@ import {
   checkInsOn,
   dayActivities,
   dayAverages,
-  dosesOn,
+  // dosesOn, — medicamentos desativados
   formatDecimal,
   incentiveFor,
   TOOL_NAMES,
@@ -38,13 +38,14 @@ export default function DayScreen() {
   const checkIns = checkInsOn(data, day);
   const health = data.health[day];
   const activities = dayActivities(data, day);
-  const doses = dosesOn(data, day).filter((dose) => dose.takenAt);
+  // Medicamentos desativados: const doses = dosesOn(data, day).filter((dose) => dose.takenAt);
+  const water = data.water[day] ?? 0;
   const diary = data.diary.filter((entry) => entry.day === day);
   const crises = data.crises.filter((item) => toDayKey(new Date(item.at)) === day);
   const practices = data.practices.filter((item) => toDayKey(new Date(item.at)) === day);
   const profileName = (id: string | null) => data.profiles.find((profile) => profile.id === id)?.name;
 
-  const hasAnything = checkIns.length || health || diary.length || crises.length || practices.length;
+  const hasAnything = checkIns.length || health || water || diary.length || crises.length || practices.length;
 
   const removeCheckIn = async (id: string) => {
     if (await confirm('Apagar check-in', 'Este registro será removido do dia.', 'Apagar')) actions.deleteCheckIn(id);
@@ -117,22 +118,29 @@ export default function DayScreen() {
         </Card>
       ) : null}
 
-      {health ? (
+      {health || water ? (
         <Card style={styles.card}>
           <Text style={styles.cardTitle}>Saúde</Text>
-          <Text style={styles.detail}>
-            Sono: {health.sleepHours === null ? '–' : `${formatDecimal(health.sleepHours)} h`}
-            {health.awakenings !== null ? ` · ${health.awakenings} despertares` : ''}
-            {health.sleepQuality ? ` · ${health.sleepQuality.toLowerCase()}` : ''}
-          </Text>
-          {health.symptoms.length ? <Text style={styles.detail}>Sintomas: {health.symptoms.join(', ')}</Text> : null}
-          {health.activityMinutes !== null ? <Text style={styles.detail}>Atividade física: {health.activityMinutes} min</Text> : null}
-          {health.weightKg !== null ? <Text style={styles.detail}>Peso: {formatDecimal(health.weightKg)} kg</Text> : null}
+          {health ? (
+            <>
+              <Text style={styles.detail}>
+                Sono: {health.sleepHours === null ? '–' : `${formatDecimal(health.sleepHours)} h`}
+                {health.awakenings !== null ? ` · ${health.awakenings} despertares` : ''}
+                {health.sleepQuality ? ` · ${health.sleepQuality.toLowerCase()}` : ''}
+              </Text>
+              {health.symptoms.length ? <Text style={styles.detail}>Sintomas: {health.symptoms.join(', ')}</Text> : null}
+              {health.activityMinutes !== null ? <Text style={styles.detail}>Atividade física: {health.activityMinutes} min</Text> : null}
+              {health.weightKg !== null ? <Text style={styles.detail}>Peso: {formatDecimal(health.weightKg)} kg</Text> : null}
+            </>
+          ) : null}
+          {water ? <Text style={styles.detail}>Água: {water} {water === 1 ? 'copo' : 'copos'}</Text> : null}
+          {/* Medicamentos desativados.
           {doses.length ? (
             <Text style={styles.detail}>
               Medicamentos: {doses.map((dose) => `${dose.name} (${formatTime(new Date(dose.takenAt!))})`).join(', ')}
             </Text>
           ) : null}
+          */}
         </Card>
       ) : null}
 

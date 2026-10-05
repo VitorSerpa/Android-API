@@ -1,19 +1,24 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+// Grupos de apoio desativados (RF-54): imports usados só pelo GroupsCard, comentado abaixo.
+// import { useFocusEffect, useRouter } from 'expo-router';
+// import { useCallback } from 'react';
+// import { ActivityIndicator } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth';
 import { importSleep } from '@/components/mente/background-tasks';
 import { StackScreen } from '@/components/mente/stack-screen';
-import { Button, Card, Chevron, Input, MIN_TOUCH, SectionEyebrow, TopBar } from '@/components/mente/ui';
+import { Button, Card, Input, MIN_TOUCH, SectionEyebrow, TopBar } from '@/components/mente/ui';
+// import { Chevron } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
 import { createSupporterInvite, revokeSupporterInvite } from '@/data/community';
 import type { SupporterInvite } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
-import { apiConfigured, createGroup, listGroups, type Group } from '@/lib/api';
+import { apiConfigured } from '@/lib/api';
+// import { createGroup, listGroups, type Group } from '@/lib/api';
 import { formatShortDate } from '@/lib/dates';
 import { confirm, notify } from '@/lib/dialogs';
-import { loadChatCache, type JoinedGroup } from '@/lib/group-chat';
+// import { loadChatCache, type JoinedGroup } from '@/lib/group-chat';
 import { connectHealthConnect, healthConnectAvailability, openHealthConnectSettings, type Availability } from '@/lib/health-connect';
 import { shareText } from '@/lib/share';
 import { completeSpotifyLogin, disconnectSpotify, spotifyConfigured, spotifyRedirectUri, useSpotifyAuthRequest } from '@/lib/spotify';
@@ -30,18 +35,19 @@ export default function CommunityScreen() {
       {offline ? (
         <Card style={styles.warning}>
           <Text style={styles.warningText}>
-            O modo offline completo está ativo, então nada aqui usa a internet. Desative-o em Configurações para participar de grupos, enviar
-            resumos e conectar integrações.
+            O modo offline completo está ativo, então nada aqui usa a internet. Desative-o em Configurações para enviar resumos e conectar
+            integrações.
           </Text>
         </Card>
       ) : !apiConfigured ? (
         <Card style={styles.warning}>
           <Text style={styles.warningText}>
-            Servidor não configurado. Defina EXPO_PUBLIC_API_URL (veja o README) para usar grupos e convites.
+            Servidor não configurado. Defina EXPO_PUBLIC_API_URL (veja o README) para usar os convites.
           </Text>
         </Card>
       ) : null}
-      <GroupsCard disabled={offline || !apiConfigured} />
+      {/* Grupos de apoio desativados (RF-54). Para reativar, descomente esta linha, o GroupsCard e os imports acima. */}
+      {/* <GroupsCard disabled={offline || !apiConfigured} /> */}
       <InvitesCard disabled={offline || !apiConfigured} />
       <SpotifyCard disabled={offline} />
       <HealthConnectCard disabled={offline} />
@@ -51,6 +57,7 @@ export default function CommunityScreen() {
 
 /* RF-54 --------------------------------------------------------------- */
 
+/* Desativado — grupos de apoio removidos do app.
 function GroupsCard({ disabled }: { disabled: boolean }) {
   const styles = useStyles();
   const router = useRouter();
@@ -142,6 +149,7 @@ function GroupRow({ title, subtitle, onPress }: { title: string; subtitle: strin
     </Pressable>
   );
 }
+*/
 
 /* RF-55 --------------------------------------------------------------- */
 
@@ -246,7 +254,7 @@ function SpotifyCard({ disabled }: { disabled: boolean }) {
         </>
       ) : spotifyConfigured ? (
         <>
-          <Text style={styles.detail}>Conecte sua conta para usar playlists relaxantes no app.</Text>
+          <Text style={styles.detail}>Conecte sua conta do Spotify ao app.</Text>
           <Button label="Conectar ao Spotify" onPress={() => promptAsync()} disabled={disabled || !request} />
         </>
       ) : (

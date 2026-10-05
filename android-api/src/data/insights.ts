@@ -239,7 +239,7 @@ export function activityCorrelations(data: UserData): CorrelationResult {
   return { status: 'ready', days: days.length, messages: messages.slice(0, 4) };
 }
 
-/** Sleep and medication observations shown next to the activity correlations. */
+/** Sleep observations shown next to the activity correlations (medication ones are disabled). */
 export function otherInsights(data: UserData): string[] {
   const insights: string[] = [];
   const { delta } = moodTrend(data, 28);
@@ -257,21 +257,22 @@ export function otherInsights(data: UserData): string[] {
     insights.push('Seu humor está melhor nos dias em que você dorme 7 horas ou mais.');
   }
 
-  // RF-17: correlate medication adherence with the emotional state.
-  if (data.medications.length) {
-    const scheduledDays = days.filter((day) => day >= toDayKey(new Date(data.medications[0].createdAt)));
-    const complete = scheduledDays.filter((day) => medicationAdherence(data, day) === 1);
-    const incomplete = scheduledDays.filter((day) => medicationAdherence(data, day) < 1);
-    const moodComplete = average(complete.map((day) => dayMood(data, day) ?? 0));
-    const moodIncomplete = average(incomplete.map((day) => dayMood(data, day) ?? 0));
-    if (moodComplete !== null && moodIncomplete !== null && Math.abs(moodComplete - moodIncomplete) >= MEANINGFUL_DIFF) {
-      insights.push(
-        moodComplete > moodIncomplete
-          ? 'Nos dias em que você toma todos os medicamentos no horário, seu humor tende a ser melhor.'
-          : 'Seu humor tem sido mais baixo nos dias com todos os medicamentos tomados — vale conversar com quem acompanha seu tratamento.',
-      );
-    }
-  }
+  // Medicamentos desativados no app — correlação de adesão (RF-17) comentada:
+  // // RF-17: correlate medication adherence with the emotional state.
+  // if (data.medications.length) {
+  //   const scheduledDays = days.filter((day) => day >= toDayKey(new Date(data.medications[0].createdAt)));
+  //   const complete = scheduledDays.filter((day) => medicationAdherence(data, day) === 1);
+  //   const incomplete = scheduledDays.filter((day) => medicationAdherence(data, day) < 1);
+  //   const moodComplete = average(complete.map((day) => dayMood(data, day) ?? 0));
+  //   const moodIncomplete = average(incomplete.map((day) => dayMood(data, day) ?? 0));
+  //   if (moodComplete !== null && moodIncomplete !== null && Math.abs(moodComplete - moodIncomplete) >= MEANINGFUL_DIFF) {
+  //     insights.push(
+  //       moodComplete > moodIncomplete
+  //         ? 'Nos dias em que você toma todos os medicamentos no horário, seu humor tende a ser melhor.'
+  //         : 'Seu humor tem sido mais baixo nos dias com todos os medicamentos tomados — vale conversar com quem acompanha seu tratamento.',
+  //     );
+  //   }
+  // }
   return insights;
 }
 

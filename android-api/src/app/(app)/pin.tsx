@@ -8,7 +8,7 @@ import { StackScreen } from '@/components/mente/stack-screen';
 import { Button, Card, TopBar } from '@/components/mente/ui';
 import { MenteType } from '@/constants/mente-theme';
 import { notify } from '@/lib/dialogs';
-import { clearPin, hasPin, PIN_LENGTH, setPin, verifyPin } from '@/lib/pin';
+import { clearPin, hasPin, PIN_LENGTH, pinErrorMessage, setPin, verifyPin } from '@/lib/pin';
 import { makeStyles } from '@/theme';
 
 type Step = 'loading' | 'menu' | 'verify-change' | 'verify-remove' | 'new' | 'confirm';
@@ -26,10 +26,17 @@ export default function PinScreen() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    hasPin(userId).then((value) => {
-      setEnabled(value);
-      setStep(value ? 'menu' : 'new');
-    });
+    hasPin(userId).then(
+      (value) => {
+        setEnabled(value);
+        setStep(value ? 'menu' : 'new');
+      },
+      // SecureStore failed: assume a PIN exists, so it can only be changed after verifying it.
+      () => {
+        setEnabled(true);
+        setStep('menu');
+      },
+    );
   }, [userId]);
 
   const verify = async (pin: string, next: () => Promise<void> | void) => {
@@ -37,7 +44,7 @@ export default function PinScreen() {
     const result = await verifyPin(userId, pin);
     setBusy(false);
     if (!result.ok) {
-      setError(result.retryInSec ? `Muitas tentativas. Aguarde ${result.retryInSec} s.` : 'PIN incorreto.');
+      setError(pinErrorMessage(result.retryInSec));
       return;
     }
     setError(null);

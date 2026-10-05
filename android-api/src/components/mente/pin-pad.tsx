@@ -39,14 +39,14 @@ export function PinPad({
       setPin('');
       return;
     }
-    setPin((value) => {
-      const next = value.length < PIN_LENGTH.max ? value + key : value;
-      if (next.length === PIN_LENGTH.max) {
-        onSubmit(next);
-        return '';
-      }
-      return next;
-    });
+    // Submitted outside the state updater, which React may run more than once.
+    const next = pin.length < PIN_LENGTH.max ? pin + key : pin;
+    if (next.length === PIN_LENGTH.max) {
+      setPin('');
+      onSubmit(next);
+      return;
+    }
+    setPin(next);
   };
 
   return (

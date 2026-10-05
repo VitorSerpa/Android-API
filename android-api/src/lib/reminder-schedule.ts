@@ -67,8 +67,9 @@ export function planNotifications(data: UserData): PlannedNotification[] {
         identifier: medicationNotificationId(medication.id, time),
         hour,
         minute,
-        title: `Hora do ${medication.name}`,
-        body: `${medication.dosage ? `${medication.dosage} · ` : ''}Toque em “Tomei” quando tomar.`,
+        // Generic title: it shows on the lock screen. The name goes in the body.
+        title: 'Hora do medicamento',
+        body: `${medication.name}${medication.dosage ? ` · ${medication.dosage}` : ''}. Toque em “Tomei” quando tomar.`,
         kind: 'medication',
         url: '/medications',
         // RF-18 / CA-01: stays in the status bar until confirmed.

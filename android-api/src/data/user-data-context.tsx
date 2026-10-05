@@ -150,14 +150,15 @@ function createActions(update: (recipe: Recipe) => void) {
         practices: [{ id: createId(), tool, durationSec, at: now() }, ...data.practices],
       })),
 
-    rateTechnique: (tool: ToolId, stars: number) =>
+    /** Records a rating, or replaces rating `id` (the same session changing its stars). Returns its id. */
+    rateTechnique: (tool: ToolId, stars: number, id?: string) => {
+      const rating = { id: id ?? createId(), tool, stars: Math.min(Math.max(Math.round(stars), 1), 5), at: now() };
       update((data) => ({
         ...data,
-        ratings: [
-          { id: createId(), tool, stars: Math.min(Math.max(Math.round(stars), 1), 5), at: now() },
-          ...data.ratings,
-        ],
-      })),
+        ratings: [rating, ...data.ratings.filter((item) => item.id !== rating.id)],
+      }));
+      return rating.id;
+    },
 
     /* Pensamentos e afirmações (US-09) ---------------------------------- */
 

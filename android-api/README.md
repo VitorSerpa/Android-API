@@ -1,6 +1,6 @@
 # Mente Equilibrada
 
-App Android (Expo SDK 57 / React Native 0.86) de autocuidado emocional: check-ins de humor, diário com fotos e áudios, saúde física, lembretes e medicamentos, histórico com gráficos, respiração e meditação, modo de emergência, PIN, modo offline, relatórios em PDF, metas e autoavaliações, personalização e uma comunidade anônima de apoio. O backend (grupos em tempo real e convites para pessoa de confiança) fica em [`../server`](../server/README.md).
+App Android (Expo SDK 57 / React Native 0.86) de autocuidado emocional: check-ins de humor, diário com fotos e áudios, saúde física, histórico com gráficos, respiração e meditação, modo de emergência, PIN, modo offline, relatórios em PDF, metas e autoavaliações e personalização. Estão desativados no app, com o código comentado: os lembretes/medicamentos com alertas e a tela *Pessoa de confiança e integrações* (grupos, convites, Spotify e Health Connect) — ver `src/components/mente/background-tasks.tsx` e `src/app/(app)/community.tsx`. O backend dessas funções fica em [`../server`](../server/README.md) e hoje não é usado pelo app.
 
 ## Rodando
 
@@ -29,8 +29,8 @@ Passo a passo completo para rodar no emulador do Android Studio: veja o [README 
 |---|---|
 | `EXPO_PUBLIC_FIREBASE_*` | Login por e-mail e senha (Firebase Authentication). |
 | `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` | Opcional: usa o Auth Emulator local. |
-| `EXPO_PUBLIC_API_URL` | Servidor de `../server` (grupos e convites). No emulador Android: `http://10.0.2.2:3000`. |
-| `EXPO_PUBLIC_SPOTIFY_CLIENT_ID` | Opcional: conexão com o Spotify (OAuth com PKCE). Cadastre o redirect `androidapi://spotify-auth` no app do Spotify. |
+| `EXPO_PUBLIC_API_URL` | Servidor de `../server`. Hoje sem uso (convites e grupos desativados). No emulador Android: `http://10.0.2.2:3000`. |
+| `EXPO_PUBLIC_SPOTIFY_CLIENT_ID` | Conexão com o Spotify (OAuth com PKCE). Hoje sem uso (integrações desativadas). |
 
 As variáveis `EXPO_PUBLIC_*` são lidas quando o Metro inicia — reinicie-o depois de editar.
 
@@ -53,7 +53,7 @@ e em `.env.local` use `EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-mente`, qualquer `EX
 
 | Pasta | Camada | Conteúdo |
 |---|---|---|
-| `src/app/` | Apresentação | Telas (Expo Router). `(app)/` só abre logado, atrás do PIN e do descanso digital. |
+| `src/app/` | Apresentação | Telas (Expo Router). `(app)/` só abre logado e atrás do PIN (o descanso digital está desativado). |
 | `src/components/mente/` | Apresentação | Componentes reutilizáveis (campos, gráficos, teclado do PIN, respiração, áudio). |
 | `src/theme/` | Apresentação | Paletas (Sereno, Pastel, Neutro) × claro/escuro e `makeStyles`/`useColors`. |
 | `src/data/insights.ts`, `assessments.ts`, `thoughts.ts`, `report.ts`, `phrases.ts` | Domínio | Regras puras: médias, correlações, metas, sugestões, testes, reestruturação cognitiva, relatório. |

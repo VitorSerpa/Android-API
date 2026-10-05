@@ -29,6 +29,6 @@ export function setDeviceOfflineMode(enabled: boolean) {
 /** Throws a friendly error when a feature needs the internet but offline mode is on. */
 export function assertOnlineAllowed(offlineMode: boolean) {
   if (offlineMode) {
-    throw new Error('O modo offline completo está ativo. Desative-o em Perfil para usar este recurso.');
+    throw new Error('O modo offline completo está ativo. Desative-o em Configurações para usar este recurso.');
   }
 }

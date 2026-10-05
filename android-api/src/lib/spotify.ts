@@ -5,7 +5,7 @@ import { secureStorage } from '@/lib/storage';
 /**
  * Spotify account connection (RF-56), OAuth 2.0 Authorization Code + PKCE, so
  * no client secret ships in the app. Create an app at developer.spotify.com,
- * add the redirect URI printed in Perfil and set `EXPO_PUBLIC_SPOTIFY_CLIENT_ID`.
+ * add the redirect URI shown in Perfil → Pessoa de confiança e integrações and set `EXPO_PUBLIC_SPOTIFY_CLIENT_ID`.
  */
 
 export const SPOTIFY_CLIENT_ID = process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID ?? '';

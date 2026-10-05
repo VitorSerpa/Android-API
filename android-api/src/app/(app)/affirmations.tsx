@@ -25,7 +25,7 @@ export default function AffirmationsScreen() {
       <Card style={styles.card}>
         <Text style={styles.cardTitle}>Minhas favoritas</Text>
         {favorites.length === 0 ? (
-          <Text style={styles.detail}>Toque em “☆ Favoritar” no card da tela inicial ou nas afirmações para salvá-las aqui.</Text>
+          <Text style={styles.detail}>Toque na ☆ de uma afirmação abaixo, ou em “Salvar como favorita” na prática de Afirmações, para salvá-la aqui.</Text>
         ) : null}
         {favorites.map((item) => (
           <View key={item.id} style={styles.row}>
@@ -41,7 +41,7 @@ export default function AffirmationsScreen() {
         ))}
       </Card>
 
-      <PhraseSection kind="affirmation" title="Minhas afirmações" hint="Aparecem no card da tela inicial junto com as do app." placeholder="Ex.: Eu sou capaz de atravessar este dia." />
+      <PhraseSection kind="affirmation" title="Minhas afirmações" hint="Aparecem na prática de Afirmações junto com as do app." placeholder="Ex.: Eu sou capaz de atravessar este dia." />
       <PhraseSection
         kind="motivation"
         title="Minhas mensagens motivacionais"

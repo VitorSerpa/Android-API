@@ -1,7 +1,8 @@
 import { Stack } from 'expo-router';
 
 import { useAuth } from '@/auth';
-import { DigitalRestGate, PinGate } from '@/components/mente/app-gates';
+import { PinGate } from '@/components/mente/app-gates';
+// import { DigitalRestGate } from '@/components/mente/app-gates'; — descanso digital desativado
 import { BackgroundTasks } from '@/components/mente/background-tasks';
 import { UserDataProvider } from '@/data/user-data-context';
 
@@ -9,7 +10,7 @@ import { UserDataProvider } from '@/data/user-data-context';
  * Everything behind the login. The root layout only mounts this group while
  * signed in; `key` remounts the data provider when a different account signs in.
  * Order matters: the PIN comes before any data is shown (RF-36), and the
- * digital-rest period replaces the whole app with the breathing screen (RF-53).
+ * digital-rest gate (RF-53) is disabled for now — see the commented lines below.
  */
 export default function AppLayout() {
   const { user } = useAuth();
@@ -19,15 +20,17 @@ export default function AppLayout() {
     <PinGate key={user.id} userId={user.id}>
       <UserDataProvider key={user.id} userId={user.id}>
         <BackgroundTasks />
-        <DigitalRestGate>
+        {/* <DigitalRestGate> — descanso digital desativado; o Stack abaixo ficava dentro dele. */}
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="check-in" />
             <Stack.Screen name="day/[day]" />
             <Stack.Screen name="diary-focus" options={{ animation: 'fade' }} />
             <Stack.Screen name="emergency" />
+            {/* Lembretes e medicamentos desativados (alertas removidos do app):
             <Stack.Screen name="reminders" />
             <Stack.Screen name="medications" />
+            */}
             <Stack.Screen name="contacts" />
             <Stack.Screen name="practice" />
             <Stack.Screen name="wellbeing" />
@@ -36,10 +39,10 @@ export default function AppLayout() {
             <Stack.Screen name="affirmations" />
             <Stack.Screen name="settings" />
             <Stack.Screen name="pin" />
-            <Stack.Screen name="community" />
+            {/* Pessoa de confiança e integrações desativadas: <Stack.Screen name="community" /> */}
             <Stack.Screen name="group/[id]" />
           </Stack>
-        </DigitalRestGate>
+        {/* </DigitalRestGate> */}
       </UserDataProvider>
     </PinGate>
   );

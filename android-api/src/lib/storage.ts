@@ -4,7 +4,8 @@ import { Platform } from 'react-native';
 
 /**
  * Two storage tiers:
- * - `jsonStorage`: app data (check-ins, diário…) in AsyncStorage — works on web too.
+ * - `jsonStorage`: small JSON preferences (e.g. the theme) in AsyncStorage — works on
+ *   web too. The user's records live in SQLite on Android (see `data/repository`).
  * - `secureStorage`: credentials such as the session token. Keychain/Keystore on
  *   native; `expo-secure-store` has no web backend, so web falls back to localStorage.
  */
