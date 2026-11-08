@@ -8,7 +8,12 @@
     "scheme": "androidapi",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "com.oserpasteam.androidapi",
+      "icon": "./assets/expo.icon",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -83,6 +88,17 @@
           "android": {
             "minSdkVersion": 24
           }
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "O Mente Equilibrada usa o microfone só enquanto você grava um áudio do diário.",
+          "speechRecognitionPermission": "Permite transcrever para texto os áudios que você grava no diário.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
+          ]
         }
       ]
     ],

@@ -57,4 +57,9 @@ export interface AuthService {
   updateProfile(token: string, patch: ProfilePatch): Promise<User>;
   /** Emails a password-reset link. Resolves even for unknown addresses. */
   resetPassword(email: string): Promise<void>;
+  /**
+   * A currently valid bearer token for the API (RF-58), refreshed when the
+   * cached one is about to expire. `null` when nobody is signed in.
+   */
+  freshToken(): Promise<string | null>;
 }

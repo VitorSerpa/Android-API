@@ -10,9 +10,9 @@ import { StackScreen } from '@/components/mente/stack-screen';
 import { StarRating } from '@/components/mente/star-rating';
 import { Button, Card, Input, MIN_TOUCH, Toggle, TopBar } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
-import { TOOL_NAMES } from '@/data/insights';
+import { TOOL_NAMES, weeklyCalmSessions } from '@/data/insights';
 import { randomAffirmation } from '@/data/phrases';
-import type { ToolId } from '@/data/types';
+import { BREATHING_MINUTES, type BreathingMinutes, type ToolId } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
 import { makeStyles, useColors } from '@/theme';
 
@@ -37,7 +37,8 @@ export default function PracticeScreen() {
   const params = useLocalSearchParams<{ tool?: string; mini?: string; minutes?: string }>();
   const tool: ToolId = isTool(params.tool) ? params.tool : 'breathing';
   const mini = params.mini === '1';
-  const { actions } = useUserData();
+  const { data, actions } = useUserData();
+  const week = weeklyCalmSessions(data);
   const [done, setDone] = useState(false);
   const [logged, setLogged] = useState(false);
   const [stars, setStars] = useState(0);
@@ -65,6 +66,12 @@ export default function PracticeScreen() {
           <Icon name="heart" size={30} color={c.greenText} />
           <Text style={styles.doneTitle}>{logged ? 'Prática registrada' : 'Prática encerrada'}</Text>
           <Text style={styles.doneText}>Que bom que você reservou esse momento para você.</Text>
+          {logged && (tool === 'breathing' || tool === 'meditation') ? (
+            // RF-68: the week's tally, right after it grows.
+            <Text style={styles.caption}>
+              {week.total} {week.total === 1 ? 'sessão' : 'sessões'} de respiração e meditação nesta semana.
+            </Text>
+          ) : null}
           <Text style={styles.question}>Quão útil foi {TOOL_NAMES[tool].toLowerCase()} agora?</Text>
           <StarRating value={stars} onChange={rate} label={`Avaliar ${TOOL_NAMES[tool]}`} />
           {stars ? <Text style={styles.caption}>Obrigado! Isso ajuda a priorizar suas sugestões.</Text> : null}
@@ -75,11 +82,11 @@ export default function PracticeScreen() {
           />
         </Card>
       ) : tool === 'breathing' ? (
-        <BreathingExercise
-          mode={mini ? { kind: 'timed', seconds: MINI_SESSION_SECONDS } : { kind: 'cycles', cycles: 4 }}
-          autoStart={mini}
-          onComplete={complete}
-        />
+        mini ? (
+          <BreathingExercise mode={{ kind: 'timed', seconds: MINI_SESSION_SECONDS }} autoStart onComplete={complete} />
+        ) : (
+          <TimedBreathing requested={Number(params.minutes)} onComplete={complete} />
+        )
       ) : tool === 'meditation' ? (
         <Meditation initialMinutes={Number(params.minutes) || 5} onComplete={complete} />
       ) : tool === 'grounding' ? (
@@ -92,6 +99,59 @@ export default function PracticeScreen() {
 }
 
 type PracticeProps = { onComplete: (durationSec: number) => void };
+
+const isBreathingMinutes = (value: number): value is BreathingMinutes =>
+  (BREATHING_MINUTES as readonly number[]).includes(value);
+
+/**
+ * RF-66 / US-18 CA-01: 1, 3 or 5 minutes of 4-7-8 breathing. The choice is
+ * saved and becomes the default of the next sessions; a suggestion that asks
+ * for a specific length only preselects it.
+ */
+function TimedBreathing({ requested, onComplete }: PracticeProps & { requested: number }) {
+  const styles = useStyles();
+  const { data, actions } = useUserData();
+  const saved = data.settings.breathingMinutes;
+  const [minutes, setMinutes] = useState<BreathingMinutes>(isBreathingMinutes(requested) ? requested : saved);
+  const [started, setStarted] = useState(false);
+
+  const choose = (value: BreathingMinutes) => {
+    setMinutes(value);
+    if (value !== saved) actions.updateSettings({ breathingMinutes: value });
+  };
+
+  return (
+    <>
+      {!started ? (
+        <>
+          <View style={styles.chipRow} accessibilityRole="radiogroup" accessibilityLabel="Duração da respiração">
+            {BREATHING_MINUTES.map((value) => {
+              const selected = minutes === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${value} ${value === 1 ? 'minuto' : 'minutos'}`}
+                  accessibilityState={{ selected }}
+                  onPress={() => choose(value)}
+                  style={[styles.chip, selected && styles.chipSelected]}>
+                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{value} min</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.caption}>Sua escolha fica salva como padrão das próximas sessões.</Text>
+        </>
+      ) : null}
+      <BreathingExercise
+        key={minutes}
+        mode={{ kind: 'timed', seconds: minutes * 60 }}
+        onStarted={() => setStarted(true)}
+        onComplete={onComplete}
+      />
+    </>
+  );
+}
 
 const MEDITATION_MINUTES = [3, 5, 10, 15] as const;
 
@@ -125,8 +185,9 @@ function ringBell() {
 
 /**
  * RF-27: guided by pre-loaded audio — a bundled ambient track plays in a loop
- * while a pt-BR voice reads the guidance, all without internet. A soft bell
- * marks the end of the countdown.
+ * while a pt-BR voice reads the guidance, all without internet.
+ * RF-67: a countdown shows the time left and a soft bell rings when — and only
+ * when — it reaches zero (US-18 CA-02); ending early saves without the bell.
  */
 function Meditation({ initialMinutes, onComplete }: PracticeProps & { initialMinutes: number }) {
   const styles = useStyles();

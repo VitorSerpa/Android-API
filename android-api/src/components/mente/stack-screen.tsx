@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, ScrollView, View, type ScrollViewProps } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MenteSpacing } from '@/constants/mente-theme';
+import { useScrollRestoration } from '@/lib/screen-state';
 import { makeStyles } from '@/theme';
 
 /**
@@ -11,14 +12,14 @@ import { makeStyles } from '@/theme';
  */
 export function StackScreen({
   children,
-  scrollRef,
   onScroll,
 }: {
   children: ReactNode;
-  scrollRef?: React.Ref<ScrollView>;
   onScroll?: ScrollViewProps['onScroll'];
 }) {
   const styles = useStyles();
+  // RF-59: reopening the app comes back to the same scroll position.
+  const [scrollRef, scroll] = useScrollRestoration();
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
@@ -26,8 +27,13 @@ export function StackScreen({
         <KeyboardAvoidingView style={styles.flex} behavior="padding">
           <ScrollView
             ref={scrollRef}
-            onScroll={onScroll}
-            scrollEventThrottle={100}
+            onLayout={scroll.onLayout}
+            onContentSizeChange={scroll.onContentSizeChange}
+            onScroll={(event) => {
+              scroll.onScroll(event);
+              onScroll?.(event);
+            }}
+            scrollEventThrottle={scroll.scrollEventThrottle}
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>

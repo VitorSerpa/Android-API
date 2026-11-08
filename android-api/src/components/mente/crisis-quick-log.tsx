@@ -4,7 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Icon } from '@/components/mente/icon';
 import { Button, Input, MIN_TOUCH } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
-import { useUserData } from '@/data/user-data-context';
+import { useUserData, useUserStore } from '@/data/user-data-context';
 import { currentCoordinates } from '@/lib/location';
 import { makeStyles, useColors } from '@/theme';
 
@@ -20,6 +20,7 @@ export function CrisisQuickLog() {
   const styles = useStyles();
   const c = useColors();
   const { data, actions } = useUserData();
+  const store = useUserStore();
   const [stage, setStage] = useState<'idle' | 'intensity' | 'triggers' | 'done'>('idle');
   const [crisisId, setCrisisId] = useState<string | null>(null);
   const [triggers, setTriggers] = useState({ situation: '', place: '', thought: '' });
@@ -29,10 +30,15 @@ export function CrisisQuickLog() {
     const id = actions.logCrisis(intensity);
     setCrisisId(id);
     setStage('triggers');
+    // RF-72 / US-20 CA-01: with the option off, the GPS is never touched.
     if (data.settings.crisisLocation && !data.settings.offlineMode) {
       setLocating(true);
       currentCoordinates()
-        .then((location) => location && actions.updateCrisis(id, { location }))
+        .then((location) => {
+          // Switched off while the fix was on its way: drop it.
+          const { settings } = store.getSnapshot();
+          if (location && settings.crisisLocation && !settings.offlineMode) actions.updateCrisis(id, { location });
+        })
         .finally(() => setLocating(false));
     }
   };

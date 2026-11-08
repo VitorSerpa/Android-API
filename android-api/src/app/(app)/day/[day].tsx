@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
+import { DayTimeline } from '@/components/mente/day-timeline';
 import { StackScreen } from '@/components/mente/stack-screen';
 import { Button, Card, Pill, Spacer, TopBar } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
@@ -12,17 +13,13 @@ import {
   // dosesOn, — medicamentos desativados
   formatDecimal,
   incentiveFor,
-  TOOL_NAMES,
 } from '@/data/insights';
 import { MOODS } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
 import { formatDayMonth, formatTime, fromDayKey, toDayKey, WEEKDAYS_LONG } from '@/lib/dates';
-import { confirm } from '@/lib/dialogs';
 import { makeStyles } from '@/theme';
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-const KIND_NAMES = { free: 'Diário', gratitude: 'Gratidão', dream: 'Sonho' } as const;
 
 export default function DayScreen() {
   const styles = useStyles();
@@ -30,7 +27,7 @@ export default function DayScreen() {
   const params = useLocalSearchParams<{ day?: string; saved?: string }>();
   const day = params.day && DAY_PATTERN.test(params.day) ? params.day : toDayKey();
   const isToday = day === toDayKey();
-  const { data, actions } = useUserData();
+  const { data } = useUserData();
   const [seed] = useState(() => Date.now());
 
   const date = fromDayKey(day);
@@ -43,13 +40,8 @@ export default function DayScreen() {
   const diary = data.diary.filter((entry) => entry.day === day);
   const crises = data.crises.filter((item) => toDayKey(new Date(item.at)) === day);
   const practices = data.practices.filter((item) => toDayKey(new Date(item.at)) === day);
-  const profileName = (id: string | null) => data.profiles.find((profile) => profile.id === id)?.name;
 
   const hasAnything = checkIns.length || health || water || diary.length || crises.length || practices.length;
-
-  const removeCheckIn = async (id: string) => {
-    if (await confirm('Apagar check-in', 'Este registro será removido do dia.', 'Apagar')) actions.deleteCheckIn(id);
-  };
 
   return (
     <StackScreen>
@@ -95,28 +87,11 @@ export default function DayScreen() {
         )}
       </Card>
 
-      {checkIns.length ? (
-        <Card style={styles.card}>
-          <Text style={styles.cardTitle}>Check-ins</Text>
-          {checkIns.map((item) => (
-            <Pressable
-              key={item.id}
-              accessibilityRole="button"
-              accessibilityHint="Segure para apagar"
-              onLongPress={() => removeCheckIn(item.id)}
-              style={styles.entry}>
-              <Text style={styles.time}>{formatTime(new Date(item.at))}</Text>
-              <View style={styles.entryText}>
-                <Text style={styles.entryTitle}>
-                  {MOODS[item.mood]} · ansiedade {item.anxiety}/10 · energia {item.energy}/5
-                </Text>
-                {profileName(item.profileId) ? <Text style={styles.detail}>{profileName(item.profileId)}</Text> : null}
-                {item.anxietyNote ? <Text style={styles.detail}>“{item.anxietyNote}”</Text> : null}
-              </View>
-            </Pressable>
-          ))}
-        </Card>
-      ) : null}
+      {/* RF-62 / US-16: every event of the day in time order; tap one for the full record. */}
+      <Card style={styles.card}>
+        <Text style={styles.cardTitle}>Linha do tempo</Text>
+        <DayTimeline day={day} />
+      </Card>
 
       {health || water ? (
         <Card style={styles.card}>
@@ -141,29 +116,6 @@ export default function DayScreen() {
             </Text>
           ) : null}
           */}
-        </Card>
-      ) : null}
-
-      {diary.length || practices.length || crises.length ? (
-        <Card style={styles.card}>
-          <Text style={styles.cardTitle}>Outros registros</Text>
-          {diary.map((entry) => (
-            <Text key={entry.id} style={styles.detail} numberOfLines={2}>
-              {KIND_NAMES[entry.kind]}: {entry.kind === 'gratitude' ? entry.gratitude?.join(' · ') : entry.text}
-              {entry.attachments.length ? ` (${entry.attachments.length} anexo${entry.attachments.length > 1 ? 's' : ''})` : ''}
-            </Text>
-          ))}
-          {practices.map((item) => (
-            <Text key={item.id} style={styles.detail}>
-              {formatTime(new Date(item.at))} · {TOOL_NAMES[item.tool]} · {Math.max(1, Math.round(item.durationSec / 60))} min
-            </Text>
-          ))}
-          {crises.map((item) => (
-            <Text key={item.id} style={styles.detail}>
-              {formatTime(new Date(item.at))} · pico de ansiedade {item.intensity}/10
-              {item.triggers.situation ? ` · ${item.triggers.situation}` : ''}
-            </Text>
-          ))}
         </Card>
       ) : null}
 

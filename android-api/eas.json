@@ -13,6 +13,28 @@
     },
     "production": {
       "autoIncrement": true
+    },
+    "ios-sideload": {
+      "environment": "preview",
+      "env": {
+        "IOS_CONFIGURATION": "Release"
+      },
+      "ios": {
+        "withoutCredentials": true,
+        "config": "ios-sideload.yml"
+      }
+    },
+    "ios-sideload-dev": {
+      "environment": "development",
+      "developmentClient": true,
+      "env": {
+        "IOS_CONFIGURATION": "Debug",
+        "IOS_ALLOW_HTTP": "1"
+      },
+      "ios": {
+        "withoutCredentials": true,
+        "config": "ios-sideload.yml"
+      }
     }
   },
   "submit": {

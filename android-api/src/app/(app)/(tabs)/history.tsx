@@ -2,9 +2,13 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { ChoiceChips } from '@/components/mente/fields';
 import { Icon } from '@/components/mente/icon';
 import { LineChart } from '@/components/mente/line-chart';
 import { RadarChart } from '@/components/mente/radar-chart';
+import { ScatterChart } from '@/components/mente/scatter-chart';
+import { WordCloud } from '@/components/mente/word-cloud';
+import { describeSleepMood, moodByProfile, mostBalancedProfile, recentWeeks, sleepMoodPoints } from '@/data/comparisons';
 import { Screen } from '@/components/mente/screen';
 import { Card, MIN_TOUCH, Spacer, TopBar } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
@@ -19,8 +23,10 @@ import {
   wellbeingIndicators,
 } from '@/data/insights';
 import { MOODS } from '@/data/types';
+import { diaryWordFrequencies } from '@/data/word-cloud';
 import { useUserData } from '@/data/user-data-context';
 import { MONTHS, WEEKDAYS_SHORT, fromDayKey, lastDays, toDayKey } from '@/lib/dates';
+import { usePersistedState } from '@/lib/screen-state';
 import { makeStyles, useColors } from '@/theme';
 
 const PERIODS = [
@@ -41,7 +47,7 @@ export default function HistoryScreen() {
   const c = useColors();
   const router = useRouter();
   const { data } = useUserData();
-  const [periodIndex, setPeriodIndex] = useState(0);
+  const [periodIndex, setPeriodIndex] = usePersistedState('history:period', 0);
   const [chartWidth, setChartWidth] = useState(0);
   const [month, setMonth] = useState(() => {
     const now = new Date();
@@ -270,7 +276,143 @@ export default function HistoryScreen() {
           </View>
         ))}
       </Card>
+
+      <SleepMoodCard width={chartWidth} />
+      <ProfilesCard width={chartWidth} />
+      <WordsCard />
     </Screen>
+  );
+}
+
+/** RF-64 / US-17 CA-01: each dot pairs a night's sleep with the next day's mood. */
+function SleepMoodCard({ width }: { width: number }) {
+  const styles = useStyles();
+  const { data } = useUserData();
+  const points = sleepMoodPoints(data);
+  return (
+    <Card style={styles.card}>
+      <Text style={styles.cardTitle}>Sono e humor do dia seguinte</Text>
+      <Text style={styles.caption}>Cada ponto é uma noite: horas dormidas × humor médio do dia em que você acordou (últimos 90 dias).</Text>
+      {points.length && width > 0 ? (
+        <View accessible accessibilityLabel={`Gráfico de dispersão com ${points.length} noites. ${describeSleepMood(points)}`}>
+          <ScatterChart points={points} width={width} />
+        </View>
+      ) : null}
+      <View style={styles.axisRow}>
+        <Text style={styles.legendText}>Eixo vertical: humor (1 a 5)</Text>
+        <Text style={styles.legendText}>Eixo horizontal: horas de sono</Text>
+      </View>
+      <Text style={styles.insightText}>{describeSleepMood(points)}</Text>
+    </Card>
+  );
+}
+
+/** RF-65 / US-17 CA-02: one mood curve per life profile; toggle profiles to compare them. */
+function ProfilesCard({ width }: { width: number }) {
+  const styles = useStyles();
+  const c = useColors();
+  const { data } = useUserData();
+  const series = moodByProfile(data);
+  const weeks = recentWeeks();
+  const colors = [c.mood, c.anxiety, c.energy, c.purpleText, c.greenText, c.amberText];
+  const colorOf = (profileId: string) => colors[Math.max(0, data.profiles.findIndex((profile) => profile.id === profileId)) % colors.length];
+  const [selected, setSelected] = usePersistedState<string[]>('history:profiles', () => series.map((item) => item.profileId));
+  const visible = series.filter((item) => selected.includes(item.profileId));
+  const best = mostBalancedProfile(series);
+  const hasData = visible.some((item) => item.count > 0);
+
+  if (!series.length) return null;
+
+  return (
+    <Card style={styles.card}>
+      <Text style={styles.cardTitle}>Humor por perfil de vida</Text>
+      <Text style={styles.caption}>Média semanal das últimas 8 semanas. Toque nos perfis para mostrar ou esconder cada curva.</Text>
+      <ChoiceChips
+        multiple
+        label="Perfis exibidos"
+        options={series.map((item) => item.profileId)}
+        renderLabel={(id) => series.find((item) => item.profileId === id)?.name ?? id}
+        selected={selected}
+        onToggle={(id) => setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
+      />
+      <View
+        accessible
+        accessibilityLabel={`Curvas de humor por perfil: ${visible
+          .map((item) => `${item.name}, média ${item.overall === null ? 'sem dados' : formatDecimal(item.overall)}`)
+          .join('; ')}`}>
+        {width > 0 ? (
+          <LineChart
+            width={width}
+            height={CHART_HEIGHT}
+            series={visible.map((item) => ({
+              values: item.weekly.map((value) => (value === null ? null : (value - 1) / 4)),
+              color: colorOf(item.profileId),
+              dots: true,
+            }))}
+          />
+        ) : (
+          <View style={{ height: CHART_HEIGHT }} />
+        )}
+        {!hasData ? (
+          <View style={styles.chartEmpty}>
+            <Text style={styles.chartEmptyText}>Associe seus check-ins a um perfil para ver as curvas</Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.weekdayRow}>
+        {[weeks[0], weeks[Math.floor(weeks.length / 2)], weeks.at(-1)!].map((week) => (
+          <Text key={week.start} style={styles.weekday}>
+            {week.label}
+          </Text>
+        ))}
+      </View>
+      {visible.map((item) => (
+        <View key={item.profileId} style={styles.profileRow}>
+          <View style={[styles.legendDot, { backgroundColor: colorOf(item.profileId) }]} />
+          <Text style={styles.profileName}>{item.name}</Text>
+          <Spacer />
+          <Text style={styles.caption}>
+            {item.overall === null ? 'sem check-ins' : `${formatDecimal(item.overall)} / 5 · ${item.count} check-in${item.count === 1 ? '' : 's'}`}
+          </Text>
+        </View>
+      ))}
+      {best ? <Text style={styles.insightText}>“{best.name}” é a área mais equilibrada no período.</Text> : null}
+    </Card>
+  );
+}
+
+const WORD_PERIODS = [
+  { label: '30 dias', days: 30 },
+  { label: 'Tudo', days: undefined },
+] as const;
+
+/** RF-63 / US-16 CA-02: frequent words of the diary, sized by frequency, without common words. */
+function WordsCard() {
+  const styles = useStyles();
+  const { data } = useUserData();
+  const [periodIndex, setPeriodIndex] = usePersistedState('history:words-period', 0);
+  const period = WORD_PERIODS[periodIndex] ?? WORD_PERIODS[0];
+  const words = diaryWordFrequencies(data, { days: period.days });
+
+  return (
+    <Card style={styles.card}>
+      <Text style={styles.cardTitle}>Palavras do seu diário</Text>
+      <ChoiceChips
+        label="Período da nuvem de palavras"
+        options={WORD_PERIODS.map((_, index) => index)}
+        renderLabel={(index) => WORD_PERIODS[index].label}
+        selected={[periodIndex]}
+        onToggle={setPeriodIndex}
+      />
+      {words.length ? (
+        <WordCloud words={words} />
+      ) : (
+        <Text style={styles.insightText}>Escreva no diário para ver aqui as palavras que mais aparecem.</Text>
+      )}
+      <Text style={styles.caption}>
+        O tamanho de cada palavra mostra quantas vezes ela aparece. Artigos, preposições e outras palavras comuns ficam de fora.
+      </Text>
+    </Card>
   );
 }
 
@@ -464,6 +606,22 @@ const useStyles = makeStyles((c) => ({
   insight: {
     flexDirection: 'row',
     gap: 10,
+  },
+  axisRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 28,
+  },
+  profileName: {
+    ...MenteType.captionStrong,
+    color: c.text,
   },
   insightDot: {
     width: 6,

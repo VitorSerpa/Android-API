@@ -59,14 +59,18 @@ export function BreathingExercise({
   mode,
   autoStart = false,
   onComplete,
+  onStarted,
 }: {
   mode: BreathingMode;
   autoStart?: boolean;
   onComplete: (durationSec: number) => void;
+  /** Called the first time the session starts (e.g. to hide the duration picker). */
+  onStarted?: () => void;
 }) {
   const styles = useStyles();
   const [running, setRunning] = useState(autoStart);
   const [elapsed] = useElapsed(running);
+  const startedOnce = useRef(autoStart);
   const [scale] = useState(() => new Animated.Value(0.55));
 
   const total = mode.kind === 'cycles' ? BREATH_CYCLE * mode.cycles : mode.seconds;
@@ -116,9 +120,25 @@ export function BreathingExercise({
         <Text style={styles.caption}>{caption}</Text>
       </Card>
 
-      <Button label={running ? 'Pausar' : elapsed ? 'Continuar' : 'Começar'} onPress={() => setRunning((value) => !value)} />
-      {mode.kind === 'cycles' && elapsed >= BREATH_CYCLE ? (
-        <Button label="Encerrar e registrar" variant="secondary" onPress={() => onComplete(elapsed)} />
+      <Button
+        label={running ? 'Pausar' : elapsed ? 'Continuar' : 'Começar'}
+        onPress={() => {
+          if (!startedOnce.current) {
+            startedOnce.current = true;
+            onStarted?.();
+          }
+          setRunning((value) => !value);
+        }}
+      />
+      {elapsed >= BREATH_CYCLE && (mode.kind === 'cycles' || elapsed < total) ? (
+        <Button
+          label="Encerrar e registrar"
+          variant="secondary"
+          onPress={() => {
+            setRunning(false);
+            onComplete(elapsed);
+          }}
+        />
       ) : null}
     </>
   );

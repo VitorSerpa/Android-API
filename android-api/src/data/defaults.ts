@@ -18,20 +18,25 @@ export const DEFAULT_PROFILES: readonly LifeProfile[] = [
   { id: 'lazer', name: 'Lazer' },
 ];
 
+/**
+ * Built-in items get fixed ids: a second device signing into the same account
+ * creates the same defaults, so the first sync (RF-58) merges them instead of
+ * listing every reminder and goal twice.
+ */
 function defaultReminders(): Reminder[] {
   return [
     // RF-04: ao acordar, ao meio-dia e ao dormir.
-    { id: createId(), kind: 'checkin', title: 'Check-in de humor', times: ['08:00', '12:00', '21:30'], enabled: true, doneOn: null },
-    { id: createId(), kind: 'hydration', title: 'Beber água', times: ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'], enabled: false, doneOn: null },
-    { id: createId(), kind: 'break', title: 'Pausa ativa', times: ['10:30', '15:30'], enabled: false, doneOn: null },
-    { id: createId(), kind: 'stretch', title: 'Alongamento', times: ['16:00'], enabled: false, doneOn: null },
+    { id: 'default-checkin', kind: 'checkin', title: 'Check-in de humor', times: ['08:00', '12:00', '21:30'], enabled: true, doneOn: null },
+    { id: 'default-hydration', kind: 'hydration', title: 'Beber água', times: ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'], enabled: false, doneOn: null },
+    { id: 'default-break', kind: 'break', title: 'Pausa ativa', times: ['10:30', '15:30'], enabled: false, doneOn: null },
+    { id: 'default-stretch', kind: 'stretch', title: 'Alongamento', times: ['16:00'], enabled: false, doneOn: null },
   ];
 }
 
 function defaultGoals(): Goal[] {
   return [
-    { id: createId(), kind: 'practiceMinutes', title: 'Meditar 10 minutos por dia', target: 10, period: 'day', tool: 'meditation', log: [] },
-    { id: createId(), kind: 'checkins', title: 'Check-in 5 dias por semana', target: 5, period: 'week', log: [] },
+    { id: 'default-goal-meditation', kind: 'practiceMinutes', title: 'Meditar 10 minutos por dia', target: 10, period: 'day', tool: 'meditation', log: [] },
+    { id: 'default-goal-checkins', kind: 'checkins', title: 'Check-in 5 dias por semana', target: 5, period: 'week', log: [] },
   ];
 }
 
@@ -65,11 +70,16 @@ export function createDefaultUserData(): UserData {
     water: {},
     invites: [],
     integrations: { spotify: null, healthConnect: null },
+    achievements: [],
+    favoriteTechniques: [],
     settings: {
       offlineMode: false,
       quietHours: { enabled: true, start: '22:00', end: '07:00' },
       digitalRest: { enabled: false, start: '21:30', end: '07:00', skippedOn: null },
       crisisLocation: false,
+      breathingMinutes: 1,
+      morningCheckIn: { enabled: false, start: '05:00', end: '11:00', lastAskedOn: null },
+      weeklyMoodGoal: null,
     },
   };
 }
@@ -218,6 +228,7 @@ export function migrate(stored: Record<string, unknown>): UserData {
       ...upgraded.settings,
       quietHours: { ...defaults.settings.quietHours, ...upgraded.settings?.quietHours },
       digitalRest: { ...defaults.settings.digitalRest, ...upgraded.settings?.digitalRest },
+      morningCheckIn: { ...defaults.settings.morningCheckIn, ...upgraded.settings?.morningCheckIn },
     },
     version: DATA_VERSION,
   };

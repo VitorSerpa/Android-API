@@ -1,7 +1,10 @@
+import { bearerToken } from './auth.js';
 import { HttpError } from './errors.js';
 import { renderInvitePage } from './html.js';
 
 export const BODY_LIMIT_BYTES = 64 * 1024;
+/** O documento sincronizado (RF-58) é maior que os outros corpos: até 10 MB. */
+export const SYNC_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
 const MESSAGES_HTTP_LIMIT = 200;
 
 const CORS_HEADERS = {
@@ -39,12 +42,13 @@ function sendHtml(res, status, html) {
   res.end(html);
 }
 
-/** Lê o corpo JSON respeitando o limite de 64 KB. Corpo vazio → undefined. */
-function readJson(req) {
+/** Lê o corpo JSON respeitando o limite (64 KB por padrão). Corpo vazio → undefined. */
+function readJson(req, limit = BODY_LIMIT_BYTES) {
+  const tooLarge = () => new HttpError(413, `Corpo da requisição excede ${limit >= 1024 * 1024 ? `${limit / 1024 / 1024} MB` : `${limit / 1024} KB`}.`);
   return new Promise((resolve, reject) => {
     const declared = Number(req.headers['content-length']);
-    if (declared > BODY_LIMIT_BYTES) {
-      reject(new HttpError(413, 'Corpo da requisição excede 64 KB.'));
+    if (declared > limit) {
+      reject(tooLarge());
       return;
     }
     const chunks = [];
@@ -53,9 +57,9 @@ function readJson(req) {
     req.on('data', (chunk) => {
       if (failed) return;
       size += chunk.length;
-      if (size > BODY_LIMIT_BYTES) {
+      if (size > limit) {
         failed = true;
-        reject(new HttpError(413, 'Corpo da requisição excede 64 KB.'));
+        reject(tooLarge());
         return;
       }
       chunks.push(chunk);
@@ -91,9 +95,17 @@ function redactPath(pathname) {
 
 /**
  * Cria o handler HTTP.
- * @param {{store, invites, onlineCount:(groupId:string)=>number, logger}} deps
+ * @param {{store, invites, onlineCount:(groupId:string)=>number, logger, syncStore?, verifier?}} deps
  */
-export function createHttpHandler({ store, invites, onlineCount, logger }) {
+export function createHttpHandler({ store, invites, onlineCount, logger, syncStore = null, verifier = null }) {
+  /** RF-58: identifica o usuário pelo ID token do Firebase. */
+  async function authenticate(req) {
+    if (!syncStore || !verifier) {
+      throw new HttpError(503, 'Sincronização não configurada no servidor (defina FIREBASE_PROJECT_ID).');
+    }
+    return verifier.verify(bearerToken(req));
+  }
+
   function groupView(group) {
     return {
       id: group.id,
@@ -161,6 +173,49 @@ export function createHttpHandler({ store, invites, onlineCount, logger }) {
 
     ['DELETE', /^\/invites\/([^/]+)$/, (req, res, [token]) => {
       invites.revoke(token, req);
+      sendEmpty(res, 204);
+    }],
+
+    // ---- Sincronização (US-14 / RF-58) ----
+
+    ['GET', /^\/sync$/, async (req, res, params, url) => {
+      const { uid } = await authenticate(req);
+      const record = await syncStore.get(uid);
+      const since = url.searchParams.get('since');
+      if (since !== null && since !== '' && Number(since) === record.revision) {
+        // Nada mudou desde a revisão que o app já tem: não reenvia o documento.
+        return sendJson(res, 200, { revision: record.revision, updatedAt: record.updatedAt, data: null, unchanged: true });
+      }
+      sendJson(res, 200, { revision: record.revision, updatedAt: record.updatedAt, data: record.data, unchanged: false });
+    }],
+
+    ['PUT', /^\/sync$/, async (req, res) => {
+      const { uid } = await authenticate(req);
+      const body = asObject(await readJson(req, SYNC_BODY_LIMIT_BYTES));
+      const { baseRevision, data } = body;
+      if (!Number.isInteger(baseRevision) || baseRevision < 0) {
+        throw new HttpError(400, '"baseRevision" deve ser um inteiro maior ou igual a zero.');
+      }
+      if (!data || typeof data !== 'object' || Array.isArray(data) || typeof data.version !== 'number') {
+        throw new HttpError(400, '"data" deve ser o documento do usuário.');
+      }
+      const result = await syncStore.put(uid, baseRevision, data);
+      if (!result.ok) {
+        // Outro aparelho gravou antes: devolve a cópia atual para o app mesclar (CA-01, sem perder nem duplicar).
+        return sendJson(res, 409, {
+          error: 'Os dados mudaram em outro aparelho.',
+          revision: result.current.revision,
+          updatedAt: result.current.updatedAt,
+          data: result.current.data,
+        });
+      }
+      logger.info('Documento sincronizado');
+      sendJson(res, 200, { revision: result.revision, updatedAt: result.updatedAt });
+    }],
+
+    ['DELETE', /^\/sync$/, async (req, res) => {
+      const { uid } = await authenticate(req);
+      await syncStore.remove(uid);
       sendEmpty(res, 204);
     }],
 

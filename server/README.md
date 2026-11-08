@@ -2,10 +2,11 @@
 
 Backend pequeno do app **Mente Equilibrada**. Ele oferece:
 
+- **Sincronização dos dados do app** (US-14 / RF-58): cada usuário, identificado pelo login do Firebase, tem uma cópia do seu documento no servidor, com controle de revisões para que dois aparelhos nunca sobrescrevam um ao outro;
 - **Grupos de apoio anônimos** com chat em tempo real (WebSocket) e histórico via HTTP;
 - **Convites de apoiador**: a pessoa gera um link e compartilha com alguém de confiança, que passa a ver um **resumo semanal anônimo** de bem-estar numa página web simples.
 
-Feito com Node.js puro (ESM, módulo `http`) e uma única dependência: [`ws`](https://github.com/websockets/ws). Os dados ficam num arquivo JSON.
+Feito com Node.js puro (ESM, módulo `http`) e uma única dependência: [`ws`](https://github.com/websockets/ws). Os dados ficam em arquivos JSON. O ID token do Firebase é validado sem SDK, com as chaves públicas do Google e `node:crypto`.
 
 **Anonimato:** o servidor nunca armazena nem transmite id de usuário, nome, IP ou identificador de socket junto das mensagens. Dos convites, guarda apenas o token, o hash SHA-256 do `ownerKey`, datas e o último resumo, sem nenhuma identidade de quem o criou.
 
@@ -28,9 +29,17 @@ npm test         # testes (node:test)
 | `PORT`       | `3000`                         | Porta HTTP/WebSocket.                                           |
 | `HOST`       | `0.0.0.0`                      | Interface de rede.                                              |
 | `PUBLIC_URL` | `http://localhost:${PORT}`     | Base usada para montar os links de convite (`${PUBLIC_URL}/i/<token>`). |
-| `DATA_FILE`  | `./data/db.json`               | Arquivo de persistência (criado se não existir). Gravação atômica (arquivo temporário + rename) com debounce de ~200 ms. |
+| `DATA_FILE`  | `./data/db.json`               | Arquivo de persistência (criado se não existir). Gravação atômica (arquivo temporário + rename) com debounce de ~200 ms. As cópias sincronizadas ficam em `users/`, na mesma pasta. |
+| `FIREBASE_PROJECT_ID` | —                     | ID do projeto Firebase cujo login o app usa. **Liga a sincronização**; sem ele, as rotas `/sync` respondem `503`. |
+| `FIREBASE_AUTH_EMULATOR_HOST` | —             | Só em desenvolvimento: com o Auth Emulator, aceita os tokens não assinados que ele emite (como o Admin SDK). Ex.: `127.0.0.1:9099`. |
 
 A pasta `data/` está no `.gitignore`. Na primeira execução, três grupos são criados: "Ansiedade no dia a dia", "Rotina e sono" e "Trabalho e estresse".
+
+Para desenvolver com o Auth Emulator do README da raiz:
+
+```bash
+FIREBASE_PROJECT_ID=demo-mente FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npm start
+```
 
 ### Conectando o app Android
 
@@ -58,6 +67,25 @@ Corpo: `{ "name": "...", "description": "..." }`. O `name` é obrigatório e tem
 `200` → até as **últimas 200** mensagens do grupo, da mais antiga para a mais nova. Com `since`, retorna só as de `createdAt > since`.
 Formato: `{ id, groupId, text, createdAt, clientId }`.
 Grupo desconhecido → `404`. `since` que não é data válida → `400`.
+
+### Sincronização (US-14 / RF-58)
+
+Todas as rotas exigem `Authorization: Bearer <ID token do Firebase>`. O token é validado (assinatura RS256 com as chaves de `securetoken@system.gserviceaccount.com`, `aud` = projeto, `iss`, `exp`, `iat` e `sub`) e o `sub` identifica o usuário. Token ausente ou inválido → `401`; sincronização não configurada → `503`.
+
+Cada usuário tem um arquivo `users/<sha256(uid)>.json` — o id do Firebase não aparece nem no nome do arquivo — com `{ revision, updatedAt, data }`.
+
+#### `GET /sync?since=<revisão>`
+`200` → `{ revision, updatedAt, data, unchanged }`. Sem cópia ainda: `revision: 0`, `data: null`. Com `since` igual à revisão atual, responde `unchanged: true` e `data: null`, sem reenviar o documento.
+
+#### `PUT /sync`
+Corpo (até **10 MB**): `{ "baseRevision": <revisão em que o app se baseou>, "data": <documento do usuário> }`.
+- `baseRevision` igual à atual → grava, incrementa a revisão e responde `200` `{ revision, updatedAt }`;
+- outra gravação chegou antes → `409` `{ error, revision, updatedAt, data }` com a cópia atual. O app mescla (três vias, por `id`) e reenvia com a nova revisão. Assim nada é sobrescrito sem ser visto e nenhum registro é duplicado.
+
+Gravações do mesmo usuário são serializadas e atômicas.
+
+#### `DELETE /sync`
+`204` → apaga a cópia do usuário no servidor.
 
 ### Convites de apoiador
 
@@ -125,6 +153,8 @@ Todas as mensagens são JSON (texto).
 server/
 ├── src/
 │   ├── index.js     # ponto de entrada (env, sinais de encerramento)
+│   ├── auth.js      # validação do ID token do Firebase (sincronização)
+│   ├── sync-store.js # cópia sincronizada de cada usuário, com revisões
 │   ├── config.js    # leitura das variáveis de ambiente
 │   ├── server.js    # monta HTTP + WebSocket (createApp)
 │   ├── http.js      # rotas HTTP, CORS, limite de corpo, erros
@@ -135,5 +165,6 @@ server/
 │   ├── errors.js    # HttpError
 │   └── logger.js    # log conciso (sem conteúdo de mensagens, IPs ou tokens)
 └── test/
-    └── server.test.js
+    ├── server.test.js
+    └── sync.test.js  # sincronização e validação do token
 ```

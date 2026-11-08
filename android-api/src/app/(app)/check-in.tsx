@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { LayoutChangeEvent, Pressable, Text, View } from 'react-native';
 
@@ -20,6 +20,7 @@ import {
 } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
 import { toDayKey } from '@/lib/dates';
+import { usePersistedState } from '@/lib/screen-state';
 import { makeStyles, useColors } from '@/theme';
 
 const ENERGY_LEVELS = Array.from({ length: ENERGY_MAX - ENERGY_MIN + 1 }, (_, index) => ENERGY_MIN + index);
@@ -110,6 +111,7 @@ export default function CheckInScreen() {
   const styles = useStyles();
   const c = useColors();
   const router = useRouter();
+  const { morning } = useLocalSearchParams<{ morning?: string }>();
   const { data, actions } = useUserData();
   const today = toDayKey();
   const health = data.health[today];
@@ -117,11 +119,12 @@ export default function CheckInScreen() {
   const last = earlier.at(-1);
 
   // A new check-in always starts neutral: several a day feed the circadian view (RF-03).
-  const [mood, setMood] = useState(2);
-  const [anxiety, setAnxiety] = useState(3);
-  const [anxietyNote, setAnxietyNote] = useState('');
-  const [energy, setEnergy] = useState(3);
-  const [profileId, setProfileId] = useState<string | null>(last?.profileId ?? null);
+  // RF-59: an unfinished check-in is kept as a draft if the app is closed.
+  const [mood, setMood, resetMood] = usePersistedState('check-in:mood', 2);
+  const [anxiety, setAnxiety, resetAnxiety] = usePersistedState('check-in:anxiety', 3);
+  const [anxietyNote, setAnxietyNote, resetNote] = usePersistedState('check-in:anxietyNote', '');
+  const [energy, setEnergy, resetEnergy] = usePersistedState('check-in:energy', 3);
+  const [profileId, setProfileId, resetProfile] = usePersistedState<string | null>('check-in:profileId', last?.profileId ?? null);
   const [trackWidth, setTrackWidth] = useState(0);
 
   // The day's health record is edited in place.
@@ -165,6 +168,11 @@ export default function CheckInScreen() {
 
     // CA-01: mood, anxiety and energy land in one record with date and time.
     actions.saveCheckIn({ mood, anxiety, anxietyNote: anxietyNote.trim(), energy, profileId });
+    resetMood(2);
+    resetAnxiety(3);
+    resetNote('');
+    resetEnergy(3);
+    resetProfile(profileId);
     const sleepChanged = parsed.sleepHours !== (health?.sleepHours ?? null);
     actions.saveHealth(today, {
       sleepHours: parsed.sleepHours,
@@ -193,6 +201,14 @@ export default function CheckInScreen() {
           </View>
         }
       />
+
+      {morning ? (
+        // RF-70: opened by the morning question.
+        <View style={styles.morningBanner} accessibilityLiveRegion="polite">
+          <Text style={styles.morningTitle}>Bom dia! Como você está?</Text>
+          <Text style={styles.morningText}>Um check-in rápido agora ajuda a acompanhar como seus dias começam.</Text>
+        </View>
+      ) : null}
 
       <Section title="Como você está se sentindo?">
         <View style={styles.moodRow} accessibilityRole="radiogroup" accessibilityLabel="Humor">
@@ -396,6 +412,20 @@ export default function CheckInScreen() {
 }
 
 const useStyles = makeStyles((c) => ({
+  morningBanner: {
+    gap: 4,
+    padding: 14,
+    borderRadius: MenteRadius.row,
+    backgroundColor: c.greenSurface,
+  },
+  morningTitle: {
+    ...MenteType.sectionTitle,
+    color: c.greenText,
+  },
+  morningText: {
+    ...MenteType.small,
+    color: c.greenText,
+  },
   flex: {
     flex: 1,
   },

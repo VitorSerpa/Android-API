@@ -7,8 +7,11 @@ import { StackScreen } from '@/components/mente/stack-screen';
 import { Button, Card, Chevron, Input, MIN_TOUCH, SectionEyebrow, SettingRow, Toggle, TopBar } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
 import { BackupFormatError, exportBackup, readBackup } from '@/data/backup';
+import { userDataRepository } from '@/data/repository';
+import { useSync } from '@/data/sync-context';
 import type { LifeProfile } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
+import { formatShortDate, formatTime } from '@/lib/dates';
 import { confirm, notify } from '@/lib/dialogs';
 import { requestLocationPermission } from '@/lib/location';
 import { makeStyles, PALETTE_NAMES, PALETTES, useTheme, type DarkModePreference, type PaletteId } from '@/theme';
@@ -28,11 +31,12 @@ export default function SettingsScreen() {
   const { data, actions } = useUserData();
   const { settings } = data;
   // Descanso digital desativado: const rest = settings.digitalRest;
+  const savedLocations = data.crises.filter((item) => item.location).length;
   const [busy, setBusy] = useState(false);
 
   const toggleLocation = async (enabled: boolean) => {
     if (!enabled) {
-      // US-20 preview: turning it off stops any new record from asking for GPS.
+      // RF-72 / US-20 CA-01: off at any time; from now on no record saves coordinates and the GPS is never used.
       actions.updateSettings({ crisisLocation: false });
       return;
     }
@@ -123,6 +127,8 @@ export default function SettingsScreen() {
 
       <ProfilesCard />
 
+      <RoutineCard />
+
       {/* Descanso digital desativado (RF-53). Para reativar, descomente este card, `rest` acima e o <DigitalRestGate> em (app)/_layout.tsx.
       <Card style={styles.card}>
         <SectionEyebrow>DESCANSO DIGITAL</SectionEyebrow>
@@ -152,7 +158,7 @@ export default function SettingsScreen() {
           subtitle={
             settings.offlineMode
               ? 'Ativo: os dados ficam só neste aparelho e o app não faz nenhuma requisição de rede.'
-              : 'Desativado: o login e a localização das crises podem usar a internet.'
+              : 'Desativado: o login, a sincronização e a localização das crises podem usar a internet.'
           }
           trailing={
             <Toggle accessibilityLabel="Modo offline completo" value={settings.offlineMode} onValueChange={(offlineMode) => actions.updateSettings({ offlineMode })} />
@@ -161,10 +167,30 @@ export default function SettingsScreen() {
         <SettingRow
           icon="alert"
           title="Salvar local dos picos de ansiedade"
-          subtitle="Pede permissão ao Android e usa o GPS só no momento do registro."
+          subtitle={
+            settings.crisisLocation
+              ? 'Ativo: usa o GPS só no momento do registro. Desligue quando quiser.'
+              : 'Desativado: nenhum registro salva o local e o GPS nunca é usado.'
+          }
           trailing={<Toggle accessibilityLabel="Salvar local dos picos" value={settings.crisisLocation} onValueChange={toggleLocation} />}
         />
+        {savedLocations ? (
+          <Button
+            label={`Apagar locais já salvos (${savedLocations})`}
+            variant="secondary"
+            onPress={async () => {
+              const ok = await confirm(
+                'Apagar locais salvos?',
+                'Os picos continuam registrados, só sem o local. Isso não pode ser desfeito.',
+                'Apagar locais',
+              );
+              if (ok) actions.clearCrisisLocations();
+            }}
+          />
+        ) : null}
       </Card>
+
+      <SyncCard />
 
       <Card style={styles.card}>
         <SectionEyebrow>MEUS DADOS</SectionEyebrow>
@@ -175,7 +201,137 @@ export default function SettingsScreen() {
         <Button label={busy ? 'Exportando…' : 'Exportar todos os dados (JSON)'} onPress={doExport} disabled={busy} />
         <Button label="Importar backup" variant="secondary" onPress={doImport} />
       </Card>
+
+      <DatabaseCheckCard />
     </StackScreen>
+  );
+}
+
+const describeSync = (at: string | null) => {
+  if (!at) return 'Ainda não sincronizado.';
+  const date = new Date(at);
+  return `Última sincronização: ${formatShortDate(date)}, ${formatTime(date)}.`;
+};
+
+/** RF-58: shows how the automatic sync is going and lets the user force one. */
+function SyncCard() {
+  const styles = useStyles();
+  const { status, syncNow } = useSync();
+  const busy = status.kind === 'syncing';
+
+  const detail =
+    status.kind === 'disabled'
+      ? status.reason === 'offline-mode'
+        ? 'Pausada: o modo offline completo está ativo. Seus registros continuam guardados neste aparelho.'
+        : 'Indisponível: o endereço do servidor (EXPO_PUBLIC_API_URL) não está configurado.'
+      : status.kind === 'syncing'
+        ? 'Sincronizando…'
+        : status.kind === 'error'
+          ? `${status.message} ${describeSync(status.lastSyncAt)}`
+          : describeSync(status.lastSyncAt);
+
+  return (
+    <Card style={styles.card}>
+      <SectionEyebrow>SINCRONIZAÇÃO</SectionEyebrow>
+      <Text style={styles.detail}>
+        Seus registros são salvos primeiro neste aparelho e enviados ao servidor automaticamente sempre que houver internet —
+        mesmo depois de dias sem conexão. Fotos e áudios ficam no aparelho; para levá-los a outro celular, use o backup abaixo.
+      </Text>
+      <Text style={[styles.label, status.kind === 'error' && styles.danger]} accessibilityLiveRegion="polite">
+        {detail}
+      </Text>
+      {status.kind !== 'disabled' ? (
+        <Button label={busy ? 'Sincronizando…' : 'Sincronizar agora'} variant="secondary" disabled={busy} onPress={() => syncNow()} />
+      ) : null}
+    </Card>
+  );
+}
+
+/** US-21 CA-03: a load test of the database, run on demand. */
+const STRESS_OPERATIONS = 500;
+
+function DatabaseCheckCard() {
+  const styles = useStyles();
+  const [result, setResult] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  if (!userDataRepository.stressTest) return null;
+
+  const run = async () => {
+    setRunning(true);
+    try {
+      const outcome = await userDataRepository.stressTest!(STRESS_OPERATIONS);
+      const rate = (outcome.failures / outcome.operations) * 100;
+      setResult(
+        `${outcome.operations} gravações em ${(outcome.durationMs / 1000).toFixed(1).replace('.', ',')} s · ` +
+          `${outcome.failures} falha${outcome.failures === 1 ? '' : 's'} (${rate.toFixed(2).replace('.', ',')}%) — ` +
+          (rate < 1 ? 'dentro da meta de menos de 1%.' : 'acima da meta de 1%.'),
+      );
+    } catch (error) {
+      setResult(error instanceof Error ? error.message : 'O teste não pôde ser concluído.');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Card style={styles.card}>
+      <SectionEyebrow>CONFIABILIDADE DO BANCO</SectionEyebrow>
+      <Text style={styles.detail}>
+        Faz {STRESS_OPERATIONS} gravações em transação numa tabela de teste e confere cada uma. Seus registros não são alterados.
+      </Text>
+      <Button label={running ? 'Testando…' : 'Testar o banco de dados'} variant="secondary" disabled={running} onPress={run} />
+      {result ? (
+        <Text style={styles.label} accessibilityLiveRegion="polite">
+          {result}
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+/** Mood goal options (1–5 scale), RF-71. */
+const MOOD_GOALS = [2.5, 3, 3.5, 4] as const;
+
+/** US-19: the morning question (RF-70) and the weekly mood goal (RF-71). */
+function RoutineCard() {
+  const styles = useStyles();
+  const { data, actions } = useUserData();
+  const morning = data.settings.morningCheckIn;
+  const goal = data.settings.weeklyMoodGoal;
+  const setMorning = (patch: Partial<typeof morning>) => actions.updateSettings({ morningCheckIn: { ...morning, ...patch } });
+
+  return (
+    <Card style={styles.card}>
+      <SectionEyebrow>ROTINA</SectionEyebrow>
+      <SettingRow
+        icon="moon"
+        title="Perguntar como estou pela manhã"
+        subtitle="Na primeira vez que você abrir o app de manhã, ele pergunta como você está — uma vez por dia."
+        trailing={
+          <Toggle
+            accessibilityLabel="Perguntar como estou pela manhã"
+            value={morning.enabled}
+            onValueChange={(enabled) => setMorning({ enabled, lastAskedOn: null })}
+          />
+        }
+      />
+      {morning.enabled ? (
+        <View style={styles.row}>
+          <TimeField label="De" value={morning.start} onChange={(start) => setMorning({ start })} />
+          <TimeField label="Até" value={morning.end} onChange={(end) => setMorning({ end })} />
+        </View>
+      ) : null}
+
+      <Text style={styles.label}>Objetivo de humor da semana</Text>
+      <Text style={styles.detail}>Um humor médio mínimo (de 1 a 5). O Início mostra durante a semana se você está acima ou abaixo dele.</Text>
+      <ChoiceChips
+        label="Objetivo de humor da semana"
+        options={[0, ...MOOD_GOALS]}
+        renderLabel={(value) => (value === 0 ? 'Sem objetivo' : `${String(value).replace('.', ',')} ou mais`)}
+        selected={[goal ?? 0]}
+        onToggle={(value) => actions.updateSettings({ weeklyMoodGoal: value === 0 ? null : value })}
+      />
+    </Card>
   );
 }
 

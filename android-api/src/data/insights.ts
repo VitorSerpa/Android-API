@@ -13,6 +13,7 @@ import {
   type UserData,
 } from '@/data/types';
 import { addDays, lastDays, toDayKey } from '@/lib/dates';
+import { isWithinWindow } from '@/lib/time';
 
 /**
  * Pure read-side helpers (the app's domain layer): every number the screens
@@ -389,6 +390,21 @@ export function goalProgress(data: UserData, goal: Goal, now: Date = new Date())
 /* Práticas                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * RF-68 / US-18 CA-03: meditation and breathing sessions completed this week.
+ * The week starts on Monday, so the total goes back to zero every Monday.
+ */
+export function weeklyCalmSessions(data: UserData, now: Date = new Date()) {
+  const week = practicesSince(data, startOfPeriod(now, 'week')).filter(
+    (item) => (item.tool === 'meditation' || item.tool === 'breathing') && new Date(item.at) <= now,
+  );
+  return {
+    total: week.length,
+    meditation: week.filter((item) => item.tool === 'meditation').length,
+    breathing: week.filter((item) => item.tool === 'breathing').length,
+  };
+}
+
 export function practicesThisMonth(data: UserData) {
   return practicesSince(data, startOfPeriod(new Date(), 'month'));
 }
@@ -418,6 +434,43 @@ export function incentiveFor(data: UserData, mood: number | null, seed: number =
   const builtIn = mood === null ? DEFAULT_MOTIVATION.neutral : mood >= 3.5 ? DEFAULT_MOTIVATION.good : mood <= 2.5 ? DEFAULT_MOTIVATION.hard : DEFAULT_MOTIVATION.neutral;
   const pool = own.length ? [...own, ...builtIn] : builtIn;
   return pool[Math.abs(Math.floor(seed / 1000)) % pool.length];
+}
+
+/* ------------------------------------------------------------------ */
+/* Objetivo de humor semanal (RF-71)                                   */
+/* ------------------------------------------------------------------ */
+
+export type WeeklyMoodGoalStatus =
+  | { status: 'none' }
+  | { status: 'no-data'; goal: number }
+  | { status: 'above' | 'below'; goal: number; average: number; days: number };
+
+/** US-19 CA-02: this week's (Monday on) mean mood against the minimum the user set. */
+export function weeklyMoodGoalStatus(data: UserData, now: Date = new Date()): WeeklyMoodGoalStatus {
+  const goal = data.settings.weeklyMoodGoal;
+  if (goal === null) return { status: 'none' };
+  const since = toDayKey(startOfPeriod(now, 'week'));
+  const items = data.checkIns.filter((item) => item.day >= since && item.day <= toDayKey(now));
+  const mean = average(items.map(moodScore));
+  if (mean === null) return { status: 'no-data', goal };
+  return { status: mean >= goal ? 'above' : 'below', goal, average: mean, days: new Set(items.map((item) => item.day)).size };
+}
+
+/* ------------------------------------------------------------------ */
+/* Pergunta da manhã (RF-70)                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * US-19 CA-01: whether to ask "como você está?" now. `ask`: open the check-in;
+ * `mark`: the moment has come but there already is a check-in today, so only
+ * remember the day (it is asked at most once a day); `none`: do nothing.
+ */
+export function morningQuestionDue(data: UserData, now: Date = new Date()): 'ask' | 'mark' | 'none' {
+  const morning = data.settings.morningCheckIn;
+  const today = toDayKey(now);
+  if (!morning.enabled || morning.lastAskedOn === today) return 'none';
+  if (!isWithinWindow(now, morning.start, morning.end)) return 'none';
+  return data.checkIns.some((item) => item.day === today) ? 'mark' : 'ask';
 }
 
 export function wordCount(text: string): number {

@@ -1,9 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { DataAccessError, legacyKeyFor, parseDocument, type UserDataRepository } from '@/data/repository-shared';
+import {
+  DataAccessError,
+  legacyKeyFor,
+  parseDocument,
+  parseSyncState,
+  syncKeyFor,
+  type UserDataRepository,
+} from '@/data/repository-shared';
 
 export { DataAccessError } from '@/data/repository-shared';
-export type { UserDataRepository } from '@/data/repository-shared';
+export type { StressTestResult, SyncState, UserDataRepository } from '@/data/repository-shared';
 
 /** Web: IndexedDB-backed AsyncStorage. Android uses SQLite (`repository.native.ts`). */
 export const userDataRepository: UserDataRepository = {
@@ -23,6 +30,22 @@ export const userDataRepository: UserDataRepository = {
     } catch (error) {
       console.error('Falha ao salvar dados do usuário', error);
       throw new DataAccessError('Não foi possível salvar seus dados.', error);
+    }
+  },
+  async loadSyncState(userId) {
+    try {
+      return parseSyncState(await AsyncStorage.getItem(syncKeyFor(userId)));
+    } catch (error) {
+      console.error('Falha ao ler o estado da sincronização', error);
+      return null;
+    }
+  },
+  async saveSyncState(userId, state) {
+    try {
+      await AsyncStorage.setItem(syncKeyFor(userId), JSON.stringify(state));
+    } catch (error) {
+      console.error('Falha ao salvar o estado da sincronização', error);
+      throw new DataAccessError('Não foi possível salvar o estado da sincronização.', error);
     }
   },
 };

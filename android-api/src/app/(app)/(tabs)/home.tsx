@@ -15,7 +15,9 @@ import {
   moodState,
   suggestionFor,
   TOOL_NAMES,
+  weeklyMoodGoalStatus,
 } from '@/data/insights';
+import { TECHNIQUES } from '@/components/mente/techniques';
 import { useUserData } from '@/data/user-data-context';
 import { WEEKDAY_INITIALS, formatLongDate, fromDayKey, lastDays, toDayKey } from '@/lib/dates';
 // import { dismissNotification, medicationNotificationId } from '@/lib/notifications';
@@ -39,6 +41,8 @@ export default function HomeScreen() {
   const health = data.health[today];
   const water = data.water[today] ?? 0;
   const suggestion = suggestionFor(data);
+  const moodGoal = weeklyMoodGoalStatus(data);
+  const shortcuts = data.favoriteTechniques.filter((id) => id in TECHNIQUES);
   // Medicamentos desativados: const doses = dosesOn(data, today);
   const firstName = user?.name.split(' ')[0] ?? '';
 
@@ -174,6 +178,46 @@ export default function HomeScreen() {
       ) : null}
       */}
 
+      {/* RF-71 / US-19 CA-02: is this week's mood above or below the minimum set? */}
+      {moodGoal.status !== 'none' ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Abre as configurações do objetivo"
+          onPress={() => router.push('/settings')}
+          style={({ pressed }) => [
+            styles.goalCard,
+            moodGoal.status === 'below' && styles.goalCardBelow,
+            pressed && styles.pressed,
+          ]}>
+          <Text style={[styles.goalTitle, moodGoal.status === 'below' && styles.goalTextBelow]}>
+            Objetivo da semana: humor {formatDecimal(moodGoal.goal)} ou mais
+          </Text>
+          <Text style={[styles.goalText, moodGoal.status === 'below' && styles.goalTextBelow]}>
+            {moodGoal.status === 'no-data'
+              ? 'Faça check-ins nesta semana para acompanhar o objetivo.'
+              : moodGoal.status === 'above'
+                ? `✓ Acima do objetivo: média ${formatDecimal(moodGoal.average)} em ${moodGoal.days} ${moodGoal.days === 1 ? 'dia' : 'dias'}.`
+                : `Abaixo do objetivo: média ${formatDecimal(moodGoal.average)} em ${moodGoal.days} ${moodGoal.days === 1 ? 'dia' : 'dias'}. Seja gentil com você — que tal uma prática curta?`}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {/* RF-69: pinned techniques. */}
+      {shortcuts.length ? (
+        <View style={styles.shortcutRow}>
+          {shortcuts.map((id) => (
+            <Pressable
+              key={id}
+              accessibilityRole="button"
+              onPress={() => router.push(TECHNIQUES[id].href)}
+              style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}>
+              <Icon name={TECHNIQUES[id].icon} size={15} color={c.accent} />
+              <Text style={styles.shortcutText}>{TECHNIQUES[id].title}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       <View style={styles.suggestionCard}>
         <View style={styles.suggestionHeader}>
           <Icon name="breath" size={16} color={c.greenText} />
@@ -207,6 +251,44 @@ export default function HomeScreen() {
 const useStyles = makeStyles((c) => ({
   flex: {
     flex: 1,
+  },
+  goalCard: {
+    gap: 4,
+    padding: 14,
+    borderRadius: MenteRadius.card,
+    backgroundColor: c.purpleSurface,
+  },
+  goalCardBelow: {
+    backgroundColor: c.amberSurface,
+  },
+  goalTitle: {
+    ...MenteType.smallStrong,
+    color: c.purpleText,
+  },
+  goalText: {
+    ...MenteType.caption,
+    color: c.purpleText,
+  },
+  goalTextBelow: {
+    color: c.amberText,
+  },
+  shortcutRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  shortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: MIN_TOUCH,
+    paddingHorizontal: 12,
+    borderRadius: MenteRadius.chip,
+    backgroundColor: c.surface,
+  },
+  shortcutText: {
+    ...MenteType.captionStrong,
+    color: c.accent,
   },
   header: {
     flexDirection: 'row',

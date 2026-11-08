@@ -6,9 +6,10 @@ import { Icon, type IconName } from '@/components/mente/icon';
 import { Screen } from '@/components/mente/screen';
 import { Button, Card, IconBubble, Input, MIN_TOUCH, SectionHeader, Spacer, TopBar } from '@/components/mente/ui';
 import { MenteRadius, MenteType } from '@/constants/mente-theme';
-import { formatDecimal, practicesThisMonth, practiceSummary, techniqueRating, TOOL_NAMES } from '@/data/insights';
+import { TECHNIQUES } from '@/components/mente/techniques';
+import { formatDecimal, practicesThisMonth, practiceSummary, techniqueRating, TOOL_NAMES, weeklyCalmSessions } from '@/data/insights';
 import { analyseThought } from '@/data/thoughts';
-import type { ToolId } from '@/data/types';
+import type { TechniqueShortcut, ToolId } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
 import { formatShortDate, formatTime } from '@/lib/dates';
 import { confirm, notify } from '@/lib/dialogs';
@@ -21,7 +22,7 @@ const TOOLS: readonly {
   detail: string;
   tone: (c: ColorTokens) => { background: string; color: string };
 }[] = [
-  { tool: 'breathing', icon: 'wave', title: 'Técnica 4-7-8', detail: 'Acalma em 4 ciclos', tone: (c) => ({ background: c.background, color: c.accent }) },
+  { tool: 'breathing', icon: 'wave', title: 'Técnica 4-7-8', detail: '1, 3 ou 5 minutos', tone: (c) => ({ background: c.background, color: c.accent }) },
   { tool: 'meditation', icon: 'moon', title: 'Meditação guiada', detail: 'Áudio e voz, 3 a 15 min', tone: (c) => ({ background: c.purpleSurface, color: c.purpleText }) },
   { tool: 'grounding', icon: 'anchor', title: 'Grounding 5-4-3-2-1', detail: 'Pelos cinco sentidos', tone: (c) => ({ background: c.greenSurface, color: c.greenText }) },
   { tool: 'affirmations', icon: 'heart', title: 'Afirmações', detail: 'Frases para hoje', tone: (c) => ({ background: c.dangerSurface, color: c.dangerText }) },
@@ -40,6 +41,19 @@ export default function ToolsScreen() {
 
   const summary = practiceSummary(data);
   const monthPractices = practicesThisMonth(data);
+  const week = weeklyCalmSessions(data);
+  const favorites = data.favoriteTechniques.filter((id) => id in TECHNIQUES);
+  const isFavorite = (id: TechniqueShortcut) => data.favoriteTechniques.includes(id);
+  const star = (id: TechniqueShortcut, name: string) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={isFavorite(id) ? `Remover ${name} dos atalhos` : `Salvar ${name} nos atalhos`}
+      accessibilityState={{ selected: isFavorite(id) }}
+      onPress={() => actions.toggleFavoriteTechnique(id)}
+      style={styles.star}>
+      <Text style={styles.starText}>{isFavorite(id) ? '★' : '☆'}</Text>
+    </Pressable>
+  );
   const analysis = analyseThought(thought.negative);
   const showSuggestions = thought.negative.trim().length >= 6;
   const canSaveThought = thought.negative.trim() && thought.alternative.trim();
@@ -65,6 +79,29 @@ export default function ToolsScreen() {
     <Screen>
       <TopBar title="Ferramentas" />
 
+      {/* RF-69: pinned techniques, one tap away. */}
+      <Card style={styles.shortcutsCard}>
+        <Text style={styles.shortcutsTitle}>Meus atalhos</Text>
+        {favorites.length ? (
+          <View style={styles.shortcuts}>
+            {favorites.map((id) => (
+              <Pressable
+                key={id}
+                accessibilityRole="button"
+                accessibilityHint="Segure para remover dos atalhos"
+                onPress={() => router.push(TECHNIQUES[id].href)}
+                onLongPress={() => actions.toggleFavoriteTechnique(id)}
+                style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}>
+                <Icon name={TECHNIQUES[id].icon} size={15} color={c.accent} />
+                <Text style={styles.shortcutText}>{TECHNIQUES[id].title}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.muted}>Toque na ☆ de uma técnica para criar um atalho aqui.</Text>
+        )}
+      </Card>
+
       <Card style={styles.breathCard}>
         <View style={styles.breathCircle}>
           <Icon name="breath" size={56} color={c.primary} />
@@ -89,7 +126,11 @@ export default function ToolsScreen() {
               accessibilityHint={rating ? `Sua nota média: ${formatDecimal(rating)} estrelas` : undefined}
               onPress={() => start(item.tool)}
               style={({ pressed }) => [styles.toolCard, pressed && styles.pressed]}>
-              <IconBubble name={item.icon} size={34} glyphSize={18} background={tone.background} color={tone.color} />
+              <View style={styles.toolHeader}>
+                <IconBubble name={item.icon} size={34} glyphSize={18} background={tone.background} color={tone.color} />
+                <Spacer />
+                {star(item.tool, item.title)}
+              </View>
               <Text style={styles.toolTitle}>{item.title}</Text>
               <Text style={styles.toolDetail}>{item.detail}</Text>
               {rating ? <Text style={styles.rating}>★ {formatDecimal(rating)}</Text> : null}
@@ -97,6 +138,28 @@ export default function ToolsScreen() {
           );
         })}
       </View>
+
+      <Text style={styles.muted} accessibilityLiveRegion="polite">
+        {/* RF-68 / CA-03: counted from Monday, so it starts again every week. */}
+        Nesta semana: {week.total} {week.total === 1 ? 'sessão' : 'sessões'} de respiração e meditação
+        {week.total ? ` (respiração ${week.breathing} · meditação ${week.meditation})` : ''} · reinicia toda segunda-feira.
+      </Text>
+
+      {(['word-game', 'achievements'] as const).map((id) => (
+        <View key={id} style={styles.linkRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push(TECHNIQUES[id].href)}
+            style={({ pressed }) => [styles.linkRowMain, pressed && styles.pressed]}>
+            <Icon name={TECHNIQUES[id].icon} size={16} color={c.accent} />
+            <View style={styles.flex}>
+              <Text style={styles.linkRowText}>{TECHNIQUES[id].title}</Text>
+              <Text style={styles.muted}>{TECHNIQUES[id].detail}</Text>
+            </View>
+          </Pressable>
+          {star(id, TECHNIQUES[id].title)}
+        </View>
+      ))}
 
       <Pressable accessibilityRole="button" onPress={() => router.push('/affirmations')} style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}>
         <Icon name="heart" size={16} color={c.accent} />
@@ -225,6 +288,57 @@ function Step({ number, label, children }: { number: number; label: string; chil
 const useStyles = makeStyles((c) => ({
   pressed: {
     opacity: 0.75,
+  },
+  flex: {
+    flex: 1,
+  },
+  shortcutsCard: {
+    gap: 10,
+  },
+  shortcutsTitle: {
+    ...MenteType.sectionTitle,
+    color: c.text,
+  },
+  shortcuts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  shortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: MIN_TOUCH,
+    paddingHorizontal: 12,
+    borderRadius: MenteRadius.chip,
+    backgroundColor: c.background,
+  },
+  shortcutText: {
+    ...MenteType.captionStrong,
+    color: c.accent,
+  },
+  toolHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  star: {
+    width: MIN_TOUCH,
+    height: MIN_TOUCH,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -10,
+    marginTop: -6,
+  },
+  starText: {
+    ...MenteType.sectionTitle,
+    color: c.amberText,
+  },
+  linkRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: MIN_TOUCH + 4,
   },
   muted: {
     ...MenteType.small,

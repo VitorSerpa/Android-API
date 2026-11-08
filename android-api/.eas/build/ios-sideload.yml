@@ -1,0 +1,62 @@
+# Build de iOS SEM assinatura, feito num Mac da nuvem do EAS, para instalar no
+# iPhone a partir do Linux com um Apple ID gratuito (Impactor / Sideloader).
+# A assinatura acontece no seu computador, na hora de instalar.
+#
+# IOS_CONFIGURATION vem do perfil no eas.json:
+#   Release -> app completo, o JavaScript vai dentro do .ipa (funciona sozinho)
+#   Debug   -> development build: abre o dev launcher e carrega o JS do Metro
+build:
+  name: iOS sem assinatura (sideload)
+  steps:
+    - eas/checkout
+
+    - eas/install_node_modules
+
+    - eas/prebuild
+
+    - run:
+        name: Instalar pods
+        working_directory: ./ios
+        command: pod install
+
+    - run:
+        name: Compilar sem assinatura
+        working_directory: ./ios
+        command: |
+          set -eo pipefail
+          CONFIGURATION="${IOS_CONFIGURATION:-Release}"
+          echo "Configuração: $CONFIGURATION"
+          xcodebuild \
+            -workspace MenteEquilibrada.xcworkspace \
+            -scheme MenteEquilibrada \
+            -configuration "$CONFIGURATION" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+    - run:
+        name: Empacotar o .ipa
+        working_directory: ./ios
+        command: |
+          set -eo pipefail
+          CONFIGURATION="${IOS_CONFIGURATION:-Release}"
+          APP="build/Build/Products/${CONFIGURATION}-iphoneos/MenteEquilibrada.app"
+          test -d "$APP"
+          rm -rf Payload MenteEquilibrada-unsigned.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry MenteEquilibrada-unsigned.ipa Payload
+          # Caminho absoluto: o envio resolve caminhos relativos a partir da
+          # raiz do repositório, não da pasta android-api.
+          cp MenteEquilibrada-unsigned.ipa "$HOME/MenteEquilibrada-unsigned.ipa"
+          ls -lh "$HOME/MenteEquilibrada-unsigned.ipa"
+
+    - eas/upload_artifact:
+        name: Enviar o .ipa
+        inputs:
+          type: build-artifact
+          path: ${ eas.env.HOME }/MenteEquilibrada-unsigned.ipa

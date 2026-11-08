@@ -25,5 +25,9 @@ export function loadConfig(env = process.env) {
   const dataFile = env.DATA_FILE
     ? path.resolve(env.DATA_FILE)
     : path.join(SERVER_ROOT, 'data', 'db.json');
-  return { port, host, publicUrl, dataFile };
+  // RF-58: a sincronização valida o ID token do Firebase deste projeto.
+  const firebaseProjectId = env.FIREBASE_PROJECT_ID || undefined;
+  // Como no Admin SDK: com o Auth Emulator, aceita os tokens não assinados que ele emite.
+  const firebaseEmulator = Boolean(env.FIREBASE_AUTH_EMULATOR_HOST);
+  return { port, host, publicUrl, dataFile, firebaseProjectId, firebaseEmulator };
 }

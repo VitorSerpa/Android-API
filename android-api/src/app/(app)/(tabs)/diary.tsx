@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
-import { AudioClip, AudioRecorderPanel } from '@/components/mente/audio';
+import { AudioClip, AudioRecorderPanel, TranscriptField } from '@/components/mente/audio';
 import { ChoiceChips } from '@/components/mente/fields';
 import { Icon } from '@/components/mente/icon';
 import { Screen } from '@/components/mente/screen';
@@ -14,8 +14,9 @@ import { DREAM_EMOTIONS, type DiaryEntry, type DiaryKind, type DreamEmotion } fr
 import { useUserData } from '@/data/user-data-context';
 import { useAutosave } from '@/hooks/use-autosave';
 import { formatDayMonth, formatShortDate, formatTime, fromDayKey, toDayKey } from '@/lib/dates';
-import { choose, confirm } from '@/lib/dialogs';
+import { choose, confirm, notify } from '@/lib/dialogs';
 import { deleteMediaFile, keepRecording, pickPhoto } from '@/lib/media';
+import { usePersistedState } from '@/lib/screen-state';
 import { makeStyles, useColors } from '@/theme';
 
 const RECENT_COUNT = 4;
@@ -30,7 +31,7 @@ const KIND_LABEL: Record<DiaryKind, string> = { free: 'Livre', gratitude: 'Grati
 
 export default function DiaryScreen() {
   const styles = useStyles();
-  const [kind, setKind] = useState<DiaryKind>('free');
+  const [kind, setKind] = usePersistedState<DiaryKind>('diary:kind', 'free');
 
   return (
     <Screen>
@@ -232,12 +233,19 @@ function FreeWriting() {
                   </Pressable>
                 </View>
               ) : (
-                <AudioClip
-                  key={attachment.id}
-                  uri={attachment.uri}
-                  durationSec={attachment.durationSec}
-                  onRemove={() => removeAttachment(attachment.id, attachment.uri)}
-                />
+                <View key={attachment.id} style={styles.audioBlock}>
+                  <AudioClip
+                    uri={attachment.uri}
+                    durationSec={attachment.durationSec}
+                    onRemove={() => removeAttachment(attachment.id, attachment.uri)}
+                  />
+                  {/* RF-60 / CA-01: the text appears with the audio and can be edited. */}
+                  <TranscriptField
+                    transcript={attachment.transcript}
+                    status={attachment.transcriptStatus}
+                    onChange={(transcript) => entryId && actions.updateAttachment(entryId, attachment.id, { transcript })}
+                  />
+                </View>
               ),
             )}
           </View>
@@ -245,9 +253,17 @@ function FreeWriting() {
 
         {recording ? (
           <AudioRecorderPanel
-            onRecorded={(uri, duration) => {
+            onRecorded={(result) => {
               setRecording(false);
-              actions.addAttachment(ensureEntry(), keepRecording(uri, duration));
+              actions.addAttachment(ensureEntry(), {
+                ...keepRecording(result.uri, result.durationSec),
+                transcript: result.transcript,
+                transcriptStatus: result.transcriptStatus,
+              });
+              // CA-02: the audio is kept either way; the user learns why there is no text.
+              if (result.transcriptStatus !== 'done') {
+                notify('Áudio salvo sem transcrição', result.problem ?? 'Não foi possível transcrever o áudio.');
+              }
             }}
             onCancel={() => setRecording(false)}
           />
@@ -460,6 +476,11 @@ function RecentEntries() {
                   ) : (
                     <View key={attachment.id} style={styles.entryAudio}>
                       <AudioClip uri={attachment.uri} durationSec={attachment.durationSec} />
+                      {attachment.transcript ? (
+                        <Text style={styles.entryTranscript} numberOfLines={3}>
+                          “{attachment.transcript}”
+                        </Text>
+                      ) : null}
                     </View>
                   ),
                 )}
@@ -657,6 +678,15 @@ const useStyles = makeStyles((c) => ({
   },
   entryAudio: {
     width: '100%',
+    gap: 4,
+  },
+  entryTranscript: {
+    ...MenteType.small,
+    color: c.textMuted,
+  },
+  audioBlock: {
+    width: '100%',
+    gap: 6,
   },
   pressed: {
     opacity: 0.75,

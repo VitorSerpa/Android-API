@@ -11,6 +11,11 @@ try {
   logger.info(`Mente Equilibrada ouvindo em http://${config.host}:${port} (WebSocket em /ws)`);
   logger.info(`URL pública dos convites: ${app.publicUrl}`);
   logger.info(`Dados em: ${config.dataFile}`);
+  logger.info(
+    app.syncEnabled
+      ? `Sincronização ativa para o projeto Firebase "${config.firebaseProjectId}"${config.firebaseEmulator ? ' (Auth Emulator)' : ''}`
+      : 'Sincronização desativada: defina FIREBASE_PROJECT_ID para ativá-la.',
+  );
 } catch (err) {
   logger.error('Não foi possível iniciar o servidor:', err.message);
   process.exit(1);

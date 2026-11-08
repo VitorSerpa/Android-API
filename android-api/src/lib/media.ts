@@ -46,11 +46,19 @@ export async function pickPhoto(source: 'camera' | 'library'): Promise<Attachmen
   return { id: createId(), kind: 'photo', uri: keep(result.assets[0].uri, 'jpg'), createdAt: new Date().toISOString() };
 }
 
+/** `.wav` from the speech recogniser (RF-60), `.m4a` from the plain recorder. */
+const audioExtension = (uri: string) => (/\.wav(?:[?#].*)?$/i.test(uri) ? 'wav' : 'm4a');
+
+/** Copies a finished recording into the media directory and returns its permanent URI. */
+export function keepAudioFile(uri: string): string {
+  return keep(uri, audioExtension(uri));
+}
+
 export function keepRecording(uri: string, durationSec: number): Attachment {
   return {
     id: createId(),
     kind: 'audio',
-    uri: keep(uri, 'm4a'),
+    uri: keepAudioFile(uri),
     durationSec: Math.round(durationSec),
     createdAt: new Date().toISOString(),
   };

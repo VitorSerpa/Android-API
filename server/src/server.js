@@ -1,5 +1,8 @@
 import http from 'node:http';
+import path from 'node:path';
+import { createFirebaseVerifier } from './auth.js';
 import { createStore } from './store.js';
+import { createSyncStore } from './sync-store.js';
 import { createInviteService } from './invites.js';
 import { createHttpHandler } from './http.js';
 import { attachWebSocket } from './ws.js';
@@ -7,7 +10,8 @@ import { consoleLogger } from './logger.js';
 
 /**
  * Monta o servidor HTTP + WebSocket sem começar a escutar.
- * @param {{port?:number, host?:string, publicUrl?:string, dataFile:string, logger?:object, heartbeatMs?:number}} options
+ * @param {{port?:number, host?:string, publicUrl?:string, dataFile:string, logger?:object, heartbeatMs?:number,
+ *   firebaseProjectId?:string, firebaseEmulator?:boolean, verifier?:{verify(token:string):Promise<{uid:string}>}}} options
  */
 export async function createApp({
   port = 3000,
@@ -16,8 +20,17 @@ export async function createApp({
   dataFile,
   logger = consoleLogger,
   heartbeatMs,
+  firebaseProjectId,
+  firebaseEmulator = false,
+  verifier,
 }) {
   const store = await createStore({ dataFile, logger });
+  // RF-58: só liga a sincronização quando há como validar o login do Firebase.
+  const syncVerifier =
+    verifier ?? (firebaseProjectId ? createFirebaseVerifier({ projectId: firebaseProjectId, emulator: firebaseEmulator }) : null);
+  const syncStore = syncVerifier
+    ? await createSyncStore({ directory: path.join(path.dirname(dataFile), 'users'), logger })
+    : null;
   let resolvedPublicUrl = publicUrl ?? `http://localhost:${port}`;
   const invites = createInviteService({ store, getPublicUrl: () => resolvedPublicUrl });
 
@@ -27,6 +40,8 @@ export async function createApp({
     invites,
     onlineCount: (groupId) => realtime?.onlineCount(groupId) ?? 0,
     logger,
+    syncStore,
+    verifier: syncVerifier,
   });
 
   const server = http.createServer((req, res) => {
@@ -48,6 +63,7 @@ export async function createApp({
   return {
     server,
     store,
+    syncEnabled: Boolean(syncStore),
     get publicUrl() {
       return resolvedPublicUrl;
     },
@@ -75,6 +91,7 @@ export async function createApp({
         server.closeAllConnections();
       });
       await store.flush();
+      await syncStore?.flush();
     },
   };
 }

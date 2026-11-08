@@ -1,11 +1,11 @@
 # Mente Equilibrada
 
-Aplicativo Android de autocuidado emocional: check-in de humor, diário com fotos e áudios, saúde física, histórico com gráficos, respiração e meditação, modo de emergência, PIN e modo offline, relatório em PDF, metas e autoavaliações e personalização. Estão desativados no app por enquanto, com o código comentado: lembretes/medicamentos (alertas) e a tela *Pessoa de confiança e integrações* (grupos de apoio, convites, Spotify e sono do Health Connect) — ver `background-tasks.tsx`, `community.tsx`, Início e Perfil.
+Aplicativo Android de autocuidado emocional: check-in de humor, diário com fotos e áudios transcritos, notas de conquistas, saúde física, histórico com gráficos e linha do tempo do dia, respiração e meditação, jogo de distração, modo de emergência, PIN e modo offline, sincronização com o servidor, relatório em PDF, metas e autoavaliações e personalização. Estão desativados no app por enquanto, com o código comentado: lembretes/medicamentos (alertas) e a tela *Pessoa de confiança e integrações* (grupos de apoio, convites, Spotify e sono do Health Connect) — ver `background-tasks.tsx`, `community.tsx`, Início e Perfil.
 
 | Pasta | Conteúdo |
 |---|---|
 | [`android-api/`](android-api/README.md) | App (Expo SDK 57 / React Native). Organização do código e variáveis de ambiente no README da pasta. |
-| [`server/`](server/README.md) | Backend Node.js: convites para pessoa de confiança e grupos de apoio em tempo real. **Hoje não é usado pelo app** (essas telas estão desativadas). |
+| [`server/`](server/README.md) | Backend Node.js: **sincronização dos dados do app** (Sprint 2), convites para pessoa de confiança e grupos de apoio em tempo real (estes dois desativados no app). |
 | [`docs/`](docs/backlog_menteequilibrada_completo.pdf) | Backlog do produto em PDF. |
 
 ## Como rodar (emulador do Android Studio)
@@ -55,9 +55,10 @@ EXPO_PUBLIC_FIREBASE_API_KEY=demo-key
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-mente
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=demo-mente.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+EXPO_PUBLIC_API_URL=http://10.0.2.2:3000
 ```
 
-`demo-key`/`demo-mente` não são credenciais reais: com `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` definido, o login fala só com o emulador local.
+`EXPO_PUBLIC_API_URL` liga a sincronização com o servidor (`10.0.2.2` é o computador visto de dentro do emulador). `demo-key`/`demo-mente` não são credenciais reais: com `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` definido, o login fala só com o emulador local.
 
 ### 4. Iniciar o emulador Android
 
@@ -79,14 +80,14 @@ npx firebase-tools@13 emulators:start --only auth --project demo-mente
 
 Precisa de Java no `PATH` (passo 1). As contas criadas ficam só na memória e somem ao fechar o terminal; crie uma conta nova no app a cada vez.
 
-**Terminal B — backend (opcional, hoje sem uso):**
+**Terminal B — backend (sincronização):**
 
 ```bash
 cd server
-npm start
+FIREBASE_PROJECT_ID=demo-mente FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npm start
 ```
 
-Não é preciso rodar: a tela de convites e integrações, única que usava o backend, está desativada no app. Se ela for reativada, defina também `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000` no `.env.local` (`10.0.2.2` é o computador visto de dentro do emulador).
+O servidor valida o login do Firebase de cada requisição e guarda uma cópia dos dados de cada conta. Sem ele o app funciona normalmente, só que os dados ficam apenas no aparelho e Configurações → Sincronização mostra o erro de conexão; ao subir o servidor, o app envia tudo o que ficou pendente.
 
 ### 6. Rodar o app (Terminal C)
 
@@ -117,10 +118,112 @@ Só é preciso rodar `npx expo run:android` de novo depois de mudar o `app.json`
 | Sintoma | Solução |
 |---|---|
 | Login fica carregando ou dá erro de rede | O Terminal A não está rodando, ou falta o `adb reverse tcp:9099 tcp:9099` (repita após reiniciar o emulador). |
+| Configurações → Sincronização mostra erro | O Terminal B não está rodando, foi iniciado sem `FIREBASE_PROJECT_ID`, ou falta `EXPO_PUBLIC_API_URL` no `.env.local` (reinicie o Metro depois de editar). |
 | `SDK location not found` ou `adb: command not found` | `ANDROID_HOME`/`PATH` do passo 1. |
 | Erro de versão do Java no build ou no Auth Emulator | Aponte `JAVA_HOME` para o `jbr` do Android Studio. |
 | Erros de "module not found" | Rode `npm ci` em `android-api` de novo. |
 | `No Android connected device found` | Ligue o emulador (passo 4) antes do `run:android`; confira com `adb devices`. |
+
+## Como rodar no iPhone (sem Mac)
+
+Só o Xcode, que só existe no macOS, compila apps de iOS. Sem Mac, o caminho é este:
+
+1. O **EAS Build** compila o app num Mac da nuvem da Expo. Ele já está configurado neste projeto e o plano gratuito tem builds de iOS.
+2. O build gera um `.ipa` **sem assinatura**. Os perfis `ios-sideload*` do `eas.json` usam o [`.eas/build/ios-sideload.yml`](android-api/.eas/build/ios-sideload.yml).
+3. No Linux, o **[Impactor](https://github.com/khcrysalis/impactor)** assina o `.ipa` com o seu **Apple ID gratuito** e o instala pelo cabo USB.
+
+O resultado é o app nativo instalado no iPhone, com SQLite, áudio, câmera, localização e notificações.
+
+### 1. Uma vez: instalar o Impactor
+
+```bash
+flatpak install flathub dev.khcrysalis.PlumeImpactor
+```
+
+O `usbmuxd` já vem no Fedora. Se o Impactor não achar o iPhone, conecte o cabo primeiro e abra o Impactor depois.
+
+### 2. Gerar o `.ipa` (repita só quando mudar `app.json` ou módulos nativos)
+
+```bash
+cd android-api
+eas build --platform ios --profile ios-sideload-dev
+```
+
+Ao terminar, o comando mostra o link da página do build, e o `MenteEquilibrada-unsigned.ipa` fica para baixar lá.
+
+O perfil `ios-sideload-dev` gera um *development build*: o app carrega o JavaScript do Metro no seu computador, igual ao `expo start --dev-client` no Android. Mudanças no código aparecem na hora, sem precisar de um build novo.
+
+### 3. Instalar no iPhone
+
+1. Conecte o iPhone pelo cabo e toque em **Confiar** neste computador.
+2. Abra o Impactor, entre com o seu Apple ID, escolha o `.ipa` e instale.
+3. No iPhone, abra **Ajustes → Privacidade e Segurança → Modo de Desenvolvedor** e ative. O iPhone reinicia.
+4. Ainda no iPhone, abra **Ajustes → Geral → VPN e Gerenciamento de Dispositivo** e confie no seu Apple ID.
+
+Com Apple ID gratuito, a Apple faz o app **expirar em 7 dias**, e só três apps instalados assim valem ao mesmo tempo. Para renovar, instale o mesmo `.ipa` de novo pelo Impactor. Não é preciso um build novo.
+
+### 4. Rodar (iPhone e computador no mesmo Wi-Fi)
+
+Descubra o IP do computador na rede com `hostname -I`. É o primeiro número, por exemplo `192.168.15.9`. Use-o no lugar de `<IP>`:
+
+```bash
+# Terminal A, na raiz do repositório: Auth Emulator aberto para a rede local
+npx firebase-tools@13 emulators:start --only auth --project demo-mente --config firebase.iphone.json
+
+# Terminal B: o mesmo do passo 5 do Android
+cd server
+FIREBASE_PROJECT_ID=demo-mente FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npm start
+
+# Terminal C
+cd android-api
+EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=<IP>:9099 EXPO_PUBLIC_API_URL=http://<IP>:3000 npx expo start --dev-client
+```
+
+Abra o app no iPhone e permita o acesso à **rede local**. Depois toque no servidor que aparece, ou digite `http://<IP>:8081`.
+
+### App completo, sem o Metro (opcional)
+
+O perfil `ios-sideload` gera um build Release, com o JavaScript dentro do `.ipa`. As variáveis `EXPO_PUBLIC_*` precisam estar no ambiente `preview` do EAS, porque o `.env.local` não é enviado para o build:
+
+```bash
+eas env:push preview --path .env.local
+eas build --platform ios --profile ios-sideload
+```
+
+Antes do `eas env:push`, troque `127.0.0.1`/`10.0.2.2` pelo `<IP>` do computador. Para usar fora da sua rede, configure um projeto Firebase real no lugar do `demo-mente`.
+
+### Atalho: `android-api/scripts/iphone.sh`
+
+Faz tudo dos passos 3 e 4 pela linha de comando:
+
+```bash
+cd android-api
+scripts/iphone.sh usb       # iPhone visível no USB (contorna o bug do ipheth/usbmuxd no Fedora)
+scripts/iphone.sh install   # instala ~/Downloads/iphone-build/MenteEquilibrada-signed.ipa (espera o "Confiar")
+scripts/iphone.sh start     # servidor :3000 + Metro :8081 com o IP certo
+scripts/iphone.sh status
+```
+
+- **iPhone some do USB / Impactor às vezes não vê:** o driver `ipheth` do kernel (modem via cabo) disputa a interface com o `usbmuxd` do sistema, que perde o aparelho ("RX transfer stalled") e ainda apaga o pareamento. O script solta o `ipheth` e roda um `usbmuxd` do usuário; o Impactor foi apontado para ele com `flatpak override --user --env=USBMUXD_SOCKET_ADDRESS=UNIX:/run/user/1000/usbmuxd-user/usbmuxd.sock --filesystem=xdg-run/usbmuxd-user dev.khcrysalis.PlumeImpactor`. Ao religar o cabo, rode `scripts/iphone.sh usb` de novo. Correção definitiva (root): `echo "blacklist ipheth" | sudo tee /etc/modprobe.d/no-ipheth.conf`.
+- **App não acha o Metro, mas `/status` abre no Safari:** o launcher do Expo lê o manifest, mas o React Native falha ao baixar o bundle ("Could not connect to development server"). Causa: o `Info.plist` tinha `NSAllowsArbitraryLoads` junto com `NSAllowsLocalNetworking`, e aí o iOS ignora o primeiro e só libera http para a rede local, bloqueando o IP do Tailscale (`100.x`). Com o `.ipa` atual, use o IP do Wi-Fi (padrão do script) e permita a *Rede Local*. O `app.config.js` já foi corrigido; depois de um novo `eas build --profile ios-sideload-dev`, `IPHONE_NET=tailscale scripts/iphone.sh start` também funciona. O script fixa `REACT_NATIVE_PACKAGER_HOSTNAME` para o Expo não anunciar o IP do Docker.
+
+### Diferenças no iPhone
+
+- **Transcrição de áudio:** o RF-60 foi implementado com o reconhecedor do Android. No iPhone, os áudios são gravados sem texto, como no caso CA-02 do backlog.
+- **Sono pelo Health Connect:** o RF-57 só existe no Android.
+- **Alternativas que não servem:**
+  - Expo Go da App Store: a versão atual só abre projetos SDK 58, e este projeto é SDK 57.
+  - Máquina virtual de macOS: a licença da Apple só permite o macOS em hardware da Apple.
+  - Apple Developer pago (US$ 99/ano): se você tiver a conta, `eas build -p ios --profile development` assina na nuvem. Aí o app instala por link ou QR code e não expira em 7 dias.
+
+## Testes
+
+```bash
+cd android-api && npm test     # 78 testes: domínio, mesclagem, transcrição e integração da sincronização com o servidor real
+cd server && npm test          # 26 testes: rotas HTTP, WebSocket, convites, sincronização e validação do token
+```
+
+Além dos testes automatizados, os fluxos da Sprint 2 foram verificados no emulador Android com o Auth Emulator e o servidor rodando: sincronização (envio, conflito entre aparelhos, exclusão, envio ao voltar a rede, pausa no modo offline), reabertura na mesma tela e rolagem, gravação no diário e nas conquistas, linha do tempo, gráficos, pergunta da manhã, objetivo semanal, respiração 1/3/5 min, localização ligada/desligada, jogo e teste de carga do banco.
 
 ## Backlog
 
@@ -480,6 +583,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-02 — Registros de até 14 dias offline são sincronizados corretamente.
 - CA-03 — Ao reabrir o app, o usuário volta à mesma tela e posição de rolagem em que estava.
 
+> **Implementação:** os registros continuam sendo gravados primeiro no SQLite. A sincronização roda ao abrir o app, quando a internet volta (`expo-network`), quando o app volta para a frente, 5 s depois de cada alteração e a cada 5 min. O servidor guarda cada versão com um número de revisão; se outro aparelho gravou antes, o app faz uma mesclagem em três vias por `id` (nada duplica, exclusões são respeitadas) e reenvia (CA-01/CA-02). Nada roda no modo offline completo. O app reabre na última tela, na mesma rolagem e com o check-in pela metade (CA-03). Status e "Sincronizar agora" em Configurações → Sincronização. Fotos e áudios ficam no aparelho (o backup JSON os leva).
+
 </details>
 
 <details>
@@ -500,6 +605,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-02 — Se a transcrição falhar, o áudio continua salvo e o usuário é avisado.
 - CA-03 — As notas de conquistas ficam listadas por data e podem ser reproduzidas.
 
+> **Implementação:** com `expo-speech-recognition` (sucessor mantido do react-native-voice, compatível com a New Architecture), o próprio reconhecedor do Android grava e transcreve ao mesmo tempo (Android 13+); o texto aparece enquanto a pessoa fala e fica editável abaixo do áudio (CA-01). Onde não dá (Android 12 ou anterior, sem serviço de voz, modo offline sem modelo no aparelho, permissão negada), o áudio é gravado normalmente e o usuário é avisado (CA-02). Notas de conquistas: Ferramentas → Minhas conquistas, agrupadas por dia e com reprodução (CA-03).
+
 </details>
 
 <details>
@@ -519,6 +626,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-01 — Os eventos aparecem ordenados por horário e tocar em um deles abre o registro completo.
 - CA-02 — A nuvem de palavras ignora palavras comuns (artigos, preposições) e o tamanho de cada palavra é proporcional à frequência.
 
+> **Implementação:** a linha do tempo fica no resumo do dia (Histórico → toque num dia, ou Início → Ver dia): check-ins, saúde, diário, práticas, crises, conquistas, testes e pensamentos em ordem de horário; tocar abre o registro completo — entradas do diário abrem na tela cheia (CA-01). Atividades e sintomas aparecem no horário em que foram registrados. A nuvem de palavras (Histórico) usa um componente próprio, já que o react-native-word-cloud não tem manutenção, ignora artigos, preposições e outras palavras comuns e inclui as transcrições dos áudios (CA-02).
+
 </details>
 
 <details>
@@ -537,6 +646,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 
 - CA-01 — Cada ponto do gráfico corresponde a um par (horas de sono da noite, humor do dia seguinte).
 - CA-02 — O usuário pode alternar entre perfis e comparar as curvas de humor de cada um.
+
+> **Implementação:** no Histórico. Como o sono de uma noite é registrado no dia em que a pessoa acorda, cada ponto da dispersão é (horas dormidas, humor médio desse dia) dos últimos 90 dias, com uma frase sobre a correlação (CA-01). O gráfico por perfil mostra a média semanal das últimas 8 semanas, com chips para mostrar/esconder cada perfil e a área mais equilibrada (CA-02).
 
 </details>
 
@@ -560,6 +671,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-02 — O sinal sonoro toca apenas quando o contador chega a zero.
 - CA-03 — O total semanal de sessões é reiniciado toda segunda-feira.
 
+> **Implementação:** a respiração 4-7-8 oferece 1, 3 ou 5 minutos e a escolha vira o padrão (CA-01). A meditação já tinha contador regressivo; o sino toca só ao chegar a zero — encerrar antes salva sem som (CA-02). O total semanal conta desde segunda-feira (CA-03) e aparece em Ferramentas e ao fim de cada prática. A ☆ de cada técnica cria atalhos em Ferramentas e no Início.
+
 </details>
 
 <details>
@@ -578,6 +691,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 
 - CA-01 — A pergunta aparece apenas no primeiro desbloqueio da manhã, uma vez por dia.
 - CA-02 — O app mostra durante a semana se a média de humor está acima ou abaixo do objetivo definido.
+
+> **Implementação:** em Configurações → Rotina. O Android só avisa um app sobre o desbloqueio da tela enquanto ele mantém um processo em segundo plano, o que gastaria bateria o dia todo (RNF-06); por isso a pergunta aparece na primeira vez que o app é aberto ou volta à tela na janela da manhã (padrão 05:00–11:00), uma vez por dia e só se ainda não houver check-in (CA-01). O objetivo de humor mínimo aparece no Início, acima ou abaixo da média da semana (CA-02).
 
 </details>
 
@@ -598,6 +713,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-01 — Com a localização desativada, nenhum registro novo salva coordenadas e o GPS não é acionado.
 - CA-02 — O jogo pode ser aberto a partir do modo de emergência e funciona sem internet.
 
+> **Implementação:** em Configurações → Privacidade. Desligado, nenhum pico novo pede o GPS nem salva coordenadas — inclusive se desligar enquanto a localização ainda estava sendo obtida (CA-01) — e há um botão para apagar os locais já salvos. Nos testes, a leitura do local falhava em aparelhos com a "Precisão de localização" do Google desligada; agora, nesse caso, o app usa a última posição conhecida recente (até 15 min). O jogo de palavras (Ferramentas, atalhos e botão "Jogo" no modo de emergência) usa listas embutidas e funciona sem internet (CA-02).
+
 </details>
 
 <details>
@@ -616,6 +733,8 @@ Valem para todo o produto. Cada user story indica quais RNF precisa atender.
 - CA-01 — Todas as consultas SQL possuem tratamento de exceção e registram o erro.
 - CA-02 — Uma falha durante a gravação não deixa registros incompletos no banco.
 - CA-03 — Em testes de carga, menos de 1% das operações de banco falham.
+
+> **Implementação:** toda consulta SQL passa por `try/catch` com log (CA-01); as gravações (documento e estado da sincronização) usam transação exclusiva, então uma falha não deixa registro pela metade e o usuário é avisado (CA-02). Configurações → Confiabilidade do banco roda 500 gravações em transação numa tabela de teste, confere cada uma e mostra a taxa de falhas contra a meta de 1% (CA-03).
 
 </details>
 

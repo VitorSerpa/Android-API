@@ -122,6 +122,14 @@ export const firebaseAuthService: AuthService = {
       return toUser(user);
     }),
 
+  freshToken: () =>
+    attempt(async () => {
+      const auth = getFirebaseAuth();
+      await auth.authStateReady();
+      // Firebase returns the cached ID token and only refreshes it near its 1 h expiry.
+      return auth.currentUser ? auth.currentUser.getIdToken() : null;
+    }),
+
   resetPassword: (email) =>
     attempt(async () => {
       try {

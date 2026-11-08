@@ -30,6 +30,7 @@
     "expo-secure-store": "~57.0.4",
     "expo-sharing": "~57.0.22",
     "expo-speech": "~57.0.3",
+    "expo-speech-recognition": "57.1.1",
     "expo-splash-screen": "~57.0.9",
     "expo-sqlite": "~57.0.3",
     "expo-status-bar": "~57.0.1",
@@ -63,7 +64,9 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "check:contrast": "node scripts/check-contrast.ts",
-    "generate:audio": "node scripts/generate-audio.mjs"
+    "generate:audio": "node scripts/generate-audio.mjs",
+    "test": "node --experimental-transform-types --no-warnings --import ./test/register.mjs --test \"test/**/*.test.ts\"",
+    "typecheck:test": "tsc -p test"
   },
   "private": true
 }

@@ -16,9 +16,11 @@ import { makeStyles, useColors } from '@/theme';
 /** CVV — Centro de Valorização da Vida, Brazil's free 24h emotional-support line. */
 const CVV = { id: 'cvv', name: 'CVV — Apoio emocional', phone: '188', detail: '188 · 24h, gratuito' };
 
-const EXERCISES: readonly { icon: IconName; title: string; detail: string; tool: ToolId; mini?: boolean }[] = [
+const EXERCISES: readonly { icon: IconName; title: string; detail: string; tool: ToolId | 'word-game'; mini?: boolean }[] = [
   { icon: 'breath', title: 'Respirar', detail: '4-7-8 · 1 min', tool: 'breathing', mini: true },
   { icon: 'anchor', title: 'Grounding', detail: '5-4-3-2-1', tool: 'grounding' },
+  // RF-73 / US-20 CA-02: the distraction game opens from here and works offline.
+  { icon: 'bulb', title: 'Jogo', detail: 'Palavras', tool: 'word-game' },
 ];
 
 const COMFORT_EVERY_MS = 8000;
@@ -86,7 +88,9 @@ export default function EmergencyScreen() {
             key={exercise.title}
             accessibilityRole="button"
             onPress={() =>
-              router.push({ pathname: '/practice', params: { tool: exercise.tool, ...(exercise.mini ? { mini: '1' } : {}) } })
+              exercise.tool === 'word-game'
+                ? router.push('/word-game')
+                : router.push({ pathname: '/practice', params: { tool: exercise.tool, ...(exercise.mini ? { mini: '1' } : {}) } })
             }
             style={({ pressed }) => [styles.exercise, pressed && styles.pressed]}>
             <Icon name={exercise.icon} size={24} color={c.accent} />

@@ -9,6 +9,8 @@ import type { Coordinates } from '@/data/types';
  */
 
 const TIMEOUT_MS = 10_000;
+/** Fallback: a fix the phone already has, if it is this recent and this precise. */
+const LAST_KNOWN = { maxAge: 15 * 60_000, requiredAccuracy: 500 };
 
 export async function requestLocationPermission(): Promise<boolean> {
   try {
@@ -18,20 +20,37 @@ export async function requestLocationPermission(): Promise<boolean> {
   }
 }
 
+const toCoordinates = (position: Location.LocationObject): Coordinates => ({
+  latitude: position.coords.latitude,
+  longitude: position.coords.longitude,
+  accuracy: position.coords.accuracy ?? null,
+});
+
+/**
+ * A fresh fix when possible. Phones with Google's "Location accuracy" switched
+ * off reject the balanced request ("unsatisfied device settings") even though
+ * GPS works, and a fix can also time out indoors; then a recent last-known
+ * position is used instead of losing the place of the peak.
+ */
 export async function currentCoordinates(): Promise<Coordinates | null> {
   try {
     const { granted } = await Location.getForegroundPermissionsAsync();
     if (!granted && !(await requestLocationPermission())) return null;
+  } catch {
+    return null;
+  }
+  try {
     const position = await Promise.race([
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), TIMEOUT_MS)),
     ]);
-    if (!position) return null;
-    return {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      accuracy: position.coords.accuracy ?? null,
-    };
+    if (position) return toCoordinates(position);
+  } catch (error) {
+    console.warn('Localização atual indisponível; tentando a última conhecida', error);
+  }
+  try {
+    const last = await Location.getLastKnownPositionAsync(LAST_KNOWN);
+    return last ? toCoordinates(last) : null;
   } catch (error) {
     console.warn('Localização indisponível', error);
     return null;

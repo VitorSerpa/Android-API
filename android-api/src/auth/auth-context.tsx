@@ -28,6 +28,8 @@ type AuthContextValue = {
   signOut: () => Promise<void>;
   updateProfile: (patch: ProfilePatch) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  /** RF-58: a valid bearer token for the sync API, or `null` when it can't be obtained now. */
+  getFreshToken: () => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -123,6 +125,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await start({ token: session.token, user });
     },
     resetPassword: (email) => authService.resetPassword(email),
+    getFreshToken: async () => {
+      if (!session) return null;
+      try {
+        return (await authService.freshToken()) ?? null;
+      } catch (error) {
+        console.warn('Não foi possível renovar o token da sessão', error);
+        return null;
+      }
+    },
   };
 
   return <AuthContext value={value}>{children}</AuthContext>;

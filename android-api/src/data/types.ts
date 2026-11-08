@@ -78,12 +78,31 @@ export type DailyHealth = {
 
 export type AttachmentKind = 'photo' | 'audio';
 
+/** RF-60: how the automatic transcription of a voice note went. */
+export type TranscriptStatus = 'done' | 'failed' | 'unavailable';
+
 export type Attachment = {
   id: string;
   kind: AttachmentKind;
   /** File in the app's document directory (native) or a data/blob URI (web). */
   uri: string;
   durationSec?: number;
+  /** RF-60 / US-15 CA-01: text recognised from the audio; the user can edit it. */
+  transcript?: string;
+  transcriptStatus?: TranscriptStatus;
+  createdAt: string;
+};
+
+/** RF-61: a short voice note about one of the day's small wins. */
+export type AchievementNote = {
+  id: string;
+  /** Local `YYYY-MM-DD` it belongs to (CA-03: listed by date). */
+  day: string;
+  uri: string;
+  durationSec: number;
+  /** Optional caption, pre-filled with the transcription when available. */
+  title: string;
+  transcriptStatus: TranscriptStatus;
   createdAt: string;
 };
 
@@ -224,6 +243,19 @@ export type CrisisLog = {
 
 export type TimeWindow = { enabled: boolean; start: string; end: string };
 
+/** RF-66: the breathing session lengths offered, in minutes. */
+export const BREATHING_MINUTES = [1, 3, 5] as const;
+export type BreathingMinutes = (typeof BREATHING_MINUTES)[number];
+
+/** RF-69: techniques that can be pinned as shortcuts. */
+export type TechniqueShortcut =
+  | 'breathing'
+  | 'meditation'
+  | 'grounding'
+  | 'affirmations'
+  | 'word-game'
+  | 'achievements';
+
 export type Settings = {
   /** RF-37: nothing leaves the device, no network request is made. */
   offlineMode: boolean;
@@ -231,8 +263,14 @@ export type Settings = {
   quietHours: TimeWindow;
   /** RF-53: only the breathing screen is reachable inside this window. */
   digitalRest: TimeWindow & { skippedOn: string | null };
-  /** RF-35: ask for and store the location of anxiety peaks. */
+  /** RF-35: ask for and store the location of anxiety peaks. RF-72: off means GPS is never used. */
   crisisLocation: boolean;
+  /** RF-66 / US-18 CA-01: default length of the next breathing sessions. */
+  breathingMinutes: BreathingMinutes;
+  /** RF-70: ask "como você está?" the first time the app is opened in the morning window. */
+  morningCheckIn: TimeWindow & { lastAskedOn: string | null };
+  /** RF-71: minimum weekly mood average (1–5), or `null` when no goal is set. */
+  weeklyMoodGoal: number | null;
 };
 
 /** RF-55: a trusted person who receives an anonymous weekly summary. */
@@ -276,5 +314,9 @@ export type UserData = {
   water: Record<string, number>;
   invites: SupporterInvite[];
   integrations: Integrations;
+  /** RF-61. */
+  achievements: AchievementNote[];
+  /** RF-69: pinned techniques, in the order they were added. */
+  favoriteTechniques: TechniqueShortcut[];
   settings: Settings;
 };

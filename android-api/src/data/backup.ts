@@ -1,5 +1,5 @@
 import { migrate } from '@/data/defaults';
-import type { Attachment, UserData } from '@/data/types';
+import type { AchievementNote, Attachment, UserData } from '@/data/types';
 import { toDayKey } from '@/lib/dates';
 import { pickJsonText, shareJson } from '@/lib/files';
 import { mediaFromBase64, mediaToBase64 } from '@/lib/media';
@@ -14,6 +14,7 @@ const APP_ID = 'mente-equilibrada';
 const FORMAT = 1;
 
 type BackupAttachment = Attachment & { base64?: string | null };
+type BackupAchievement = AchievementNote & { base64?: string | null };
 
 type BackupFile = {
   app: typeof APP_ID;
@@ -22,7 +23,15 @@ type BackupFile = {
   data: UserData;
 };
 
-const extensionOf = (attachment: Attachment) => (attachment.kind === 'audio' ? 'm4a' : 'jpg');
+/** Keeps the file's own extension: recordings are `.m4a`, or `.wav` when they were transcribed (RF-60). */
+export function extensionOf(item: { uri: string; kind?: Attachment['kind'] }): string {
+  const match = /\.([a-z0-9]{2,4})(?:[?#].*)?$/i.exec(item.uri);
+  if (match) return match[1].toLowerCase();
+  const mime = /^data:([^;]+);/.exec(item.uri)?.[1];
+  if (mime === 'audio/wav' || mime === 'audio/x-wav') return 'wav';
+  if (mime?.startsWith('audio/')) return 'm4a';
+  return item.kind === 'photo' ? 'jpg' : 'm4a';
+}
 
 export async function exportBackup(data: UserData): Promise<void> {
   const diary = await Promise.all(
@@ -36,7 +45,15 @@ export async function exportBackup(data: UserData): Promise<void> {
       ),
     })),
   );
-  const file: BackupFile = { app: APP_ID, format: FORMAT, exportedAt: new Date().toISOString(), data: { ...data, diary } };
+  const achievements = await Promise.all(
+    data.achievements.map(async (note): Promise<BackupAchievement> => ({ ...note, base64: await mediaToBase64(note.uri) })),
+  );
+  const file: BackupFile = {
+    app: APP_ID,
+    format: FORMAT,
+    exportedAt: new Date().toISOString(),
+    data: { ...data, diary, achievements },
+  };
   await shareJson(JSON.stringify(file, null, 2), `mente-equilibrada-backup-${toDayKey()}.json`, 'Exportar meus dados');
 }
 
@@ -68,5 +85,8 @@ export async function readBackup(): Promise<UserData | null> {
         )
         .filter((item): item is Attachment => item !== null),
     })),
+    achievements: (data.achievements as BackupAchievement[])
+      .map(({ base64, ...note }) => (base64 ? { ...note, uri: mediaFromBase64(base64, extensionOf(note)) } : null))
+      .filter((item): item is AchievementNote => item !== null),
   };
 }
