@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import { useAuth } from '@/auth';
 import { createSyncEngine, type SyncEngine, type SyncStatus } from '@/data/sync-engine';
 import { useUserStore } from '@/data/user-data-context';
+import { loadServerAddress } from '@/lib/server-address';
 
 /** A burst of edits (typing in the diary) becomes one sync. */
 const CHANGE_DEBOUNCE_MS = 5_000;
@@ -33,7 +34,8 @@ export function SyncProvider({ userId, children }: { userId: string; children: R
     const run = () => {
       if (debounce) clearTimeout(debounce);
       debounce = null;
-      engine.syncNow().then(() => {
+      // The address typed in Configurações must be in place before the first sync.
+      loadServerAddress().then(() => engine.syncNow()).then(() => {
         if (retry) clearTimeout(retry);
         retry = engine.getStatus().kind === 'error' ? setTimeout(run, RETRY_AFTER_ERROR_MS) : null;
       });

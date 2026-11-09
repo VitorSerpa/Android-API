@@ -14,6 +14,7 @@ import { MenteRadius, MenteType } from '@/constants/mente-theme';
 import type { TranscriptStatus } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
 import { notify } from '@/lib/dialogs';
+import { resolveMediaUri } from '@/lib/media';
 import {
   canTranscribeWhileRecording,
   requestTranscriptionPermission,
@@ -25,7 +26,15 @@ import { makeStyles } from '@/theme';
 /** RF-10: voice notes are capped at 30 seconds. */
 export const MAX_RECORDING_SEC = 30;
 
-const releaseMicrophone = () => setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+/**
+ * Back to playback-only. `playsInSilentMode` must be repeated: on iOS every
+ * field left out is reset to its default, and with it off the session becomes
+ * "ambient" — the ring/silent switch then mutes the voice notes. This also
+ * undoes the speech recogniser's "measurement" session, whose output is
+ * almost inaudible.
+ */
+export const releaseMicrophone = () =>
+  setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, interruptionMode: 'doNotMix' }).catch(() => {});
 
 /** What a finished recording hands back. `uri` is still a temporary file: keep it with `keepAudioFile`. */
 export type Recording = {
@@ -134,6 +143,7 @@ export function AudioRecorderPanel({
       onPartial: setPartial,
       onFinish: (result) => {
         session.current = null;
+        void releaseMicrophone();
         if (result.uri && result.durationSec > 0.5) {
           onRecorded({
             uri: result.uri,
@@ -276,16 +286,18 @@ export function TranscriptField({
 /** Play/pause row for an attached voice note. */
 export function AudioClip({ uri, durationSec, onRemove }: { uri: string; durationSec?: number; onRemove?: () => void }) {
   const styles = useStyles();
-  const player = useAudioPlayer(uri);
+  const player = useAudioPlayer(resolveMediaUri(uri));
   const status = useAudioPlayerStatus(player);
 
-  const toggle = () => {
+  const toggle = async () => {
     if (status.playing) {
       player.pause();
-    } else {
-      if (status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration)) player.seekTo(0);
-      player.play();
+      return;
     }
+    // Loud speaker, even with the iPhone on silent (see `releaseMicrophone`).
+    await releaseMicrophone();
+    if (status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration)) await player.seekTo(0);
+    player.play();
   };
 
   return (

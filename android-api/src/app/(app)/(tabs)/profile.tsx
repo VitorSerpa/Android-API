@@ -155,6 +155,13 @@ export default function ProfileScreen() {
       <Card style={styles.section}>
         <SectionEyebrow>CONFIGURAÇÕES</SectionEyebrow>
         <SettingRow
+          icon="cloud"
+          title="Sincronização e rotina"
+          subtitle={`Servidor · pergunta da manhã ${data.settings.morningCheckIn.enabled ? 'ativa' : 'desligada'} · objetivo de humor`}
+          trailing={<Chevron />}
+          onPress={() => router.push('/settings')}
+        />
+        <SettingRow
           icon="palette"
           title="Aparência e perfis"
           subtitle={`${PALETTE_NAMES[prefs.palette]} · ${plural(data.profiles.length, 'perfil de vida', 'perfis de vida')}`}

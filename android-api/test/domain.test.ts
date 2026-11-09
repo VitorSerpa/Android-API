@@ -65,6 +65,21 @@ describe('Linha do tempo do dia (RF-62 / US-16 CA-01)', () => {
     assert.equal(diaries.find((event) => event.id === 'diary:grat')!.diaryEntryId, undefined);
   });
 
+  test('escrita livre com foto ou áudio abre no lugar, com a transcrição, e não no editor só de texto', () => {
+    const withAudio = withData({
+      diary: [
+        diary(day, '', {
+          id: 'voice',
+          createdAt: at(day, 9),
+          attachments: [{ id: 'a1', kind: 'audio', uri: 'file:///media/a1.wav', durationSec: 5, createdAt: at(day, 9), transcript: 'dia bom' }],
+        }),
+      ],
+    });
+    const [event] = dayTimeline(withAudio, day);
+    assert.equal(event.diaryEntryId, undefined);
+    assert.ok(event.details.includes('Áudio: “dia bom”'));
+  });
+
   test('dia vazio não tem eventos', () => {
     assert.deepEqual(dayTimeline(freshData(), day), []);
   });

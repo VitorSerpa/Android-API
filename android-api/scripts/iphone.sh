@@ -4,8 +4,10 @@
 #   scripts/iphone.sh usb       # faz o iPhone aparecer no USB (usbmuxd de usuário)
 #   scripts/iphone.sh install   # instala o .ipa assinado (espera o "Confiar" no iPhone)
 #   scripts/iphone.sh start     # sobe o servidor (:3000) e o Metro (:8081)
+#   scripts/iphone.sh server    # sobe só o servidor (:3000), para a sincronização da versão sem PC
 #   scripts/iphone.sh status    # mostra o que está rodando
 #   scripts/iphone.sh all       # usb + install + start
+#   scripts/iphone.sh renew     # reassina (7 dias) e reinstala a versão sem PC; "renew dev" p/ dev
 #
 # Variáveis opcionais:
 #   IPHONE_NET=lan|tailscale    (padrão: lan; tailscale só com um .ipa gerado após a correção do app.config.js)
@@ -150,16 +152,21 @@ pick_host() {
 
 port_up() { ss -ltn "( sport = :$1 )" 2>/dev/null | grep -q LISTEN; }
 
-cmd_start() {
-  local host
-  host="$(pick_host)"
-  log "Endereço do computador para o iPhone: $host"
+cmd_server() {
   if port_up 3000; then
     log "Servidor já está na porta 3000."
   else
     (cd "$REPO_DIR/server" && FIREBASE_PROJECT_ID=androi-api setsid nohup npm start >>"$LOGS/server.log" 2>&1 </dev/null &)
     log "Servidor iniciado (log: $LOGS/server.log)"
   fi
+  log "No iPhone: Perfil > Sincronização e rotina > Endereço do servidor = http://$(pick_host):3000"
+}
+
+cmd_start() {
+  local host
+  host="$(pick_host)"
+  log "Endereço do computador para o iPhone: $host"
+  cmd_server
   if port_up 8081; then
     log "Metro já está na porta 8081. Para trocar o endereço: pkill -f 'expo start' e rode de novo."
   else
@@ -181,7 +188,28 @@ cmd_status() {
   echo "endereço: http://$(pick_host):8081"
 }
 
+# Reassina (validade nova de 7 dias, Apple ID gratuito) e reinstala.
+#   scripts/iphone.sh renew          -> versão Release (abre sem o PC)
+#   scripts/iphone.sh renew dev      -> build de desenvolvimento (usa o Metro)
+cmd_renew() {
+  local d="$HOME/Downloads/iphone-build" src out
+  if [ "${1:-release}" = dev ]; then
+    src="$d/MenteEquilibrada-unsigned-v2.ipa"; out="$d/MenteEquilibrada-signed.ipa"
+  else
+    src="$d/MenteEquilibrada-release-unsigned.ipa"; out="$d/MenteEquilibrada-release-signed.ipa"
+  fi
+  [ -f "$src" ] || { log "Não achei $src"; return 1; }
+  log "Assinando $(basename "$src") com o seu Apple ID..."
+  flatpak run --command=plumesign --filesystem=home dev.khcrysalis.PlumeImpactor \
+    sign -p "$src" --apple-id -o "$out" </dev/null >>"$LOGS/sign.log" 2>&1 \
+    || { log "Falhou a assinatura; veja $LOGS/sign.log"; return 1; }
+  IPA="$out" cmd_install
+  log "Renovado: vale por 7 dias a partir de agora."
+}
+
 case "${1:-all}" in
+  renew) cmd_renew "${2:-release}" ;;
+  server) cmd_server ;;
   usb) cmd_usb ;;
   install) cmd_install ;;
   start) cmd_start ;;

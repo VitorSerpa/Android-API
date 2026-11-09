@@ -58,6 +58,7 @@ function createDevice(name: string, userId: string, initial: UserData = freshDat
   const listeners = new Set<() => void>();
   const store = {
     getSnapshot: () => data,
+    flush: async () => {},
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

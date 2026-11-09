@@ -35,3 +35,7 @@ export function mediaFromBase64(base64: string, extension: string): string {
   const mime = extension === 'm4a' ? 'audio/mp4' : extension === 'wav' ? 'audio/wav' : 'image/jpeg';
   return `data:${mime};base64,${base64}`;
 }
+
+export function resolveMediaUri(uri: string): string {
+  return uri;
+}

@@ -14,7 +14,7 @@ import { MenteRadius, MenteType } from '@/constants/mente-theme';
 import { createSupporterInvite, revokeSupporterInvite } from '@/data/community';
 import type { SupporterInvite } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
-import { apiConfigured } from '@/lib/api';
+import { isApiConfigured } from '@/lib/api';
 // import { createGroup, listGroups, type Group } from '@/lib/api';
 import { formatShortDate } from '@/lib/dates';
 import { confirm, notify } from '@/lib/dialogs';
@@ -39,7 +39,7 @@ export default function CommunityScreen() {
             integrações.
           </Text>
         </Card>
-      ) : !apiConfigured ? (
+      ) : !isApiConfigured() ? (
         <Card style={styles.warning}>
           <Text style={styles.warningText}>
             Servidor não configurado. Defina EXPO_PUBLIC_API_URL (veja o README) para usar os convites.
@@ -47,8 +47,8 @@ export default function CommunityScreen() {
         </Card>
       ) : null}
       {/* Grupos de apoio desativados (RF-54). Para reativar, descomente esta linha, o GroupsCard e os imports acima. */}
-      {/* <GroupsCard disabled={offline || !apiConfigured} /> */}
-      <InvitesCard disabled={offline || !apiConfigured} />
+      {/* <GroupsCard disabled={offline || !isApiConfigured()} /> */}
+      <InvitesCard disabled={offline || !isApiConfigured()} />
       <SpotifyCard disabled={offline} />
       <HealthConnectCard disabled={offline} />
     </StackScreen>

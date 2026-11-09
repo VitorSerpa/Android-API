@@ -93,7 +93,7 @@ export default function HomeScreen() {
       </Pressable>
 
       <Card style={styles.summaryCard}>
-        <SectionHeader title="Resumo de hoje" action="Ver dia" onPressAction={() => router.push({ pathname: '/day/[day]', params: { day: today } })} />
+        <SectionHeader title="Resumo de hoje" action="Linha do tempo" onPressAction={() => router.push({ pathname: '/day/[day]', params: { day: today } })} />
 
         <View style={styles.metricRow}>
           {metrics.map((metric) => (
@@ -179,7 +179,18 @@ export default function HomeScreen() {
       */}
 
       {/* RF-71 / US-19 CA-02: is this week's mood above or below the minimum set? */}
-      {moodGoal.status !== 'none' ? (
+      {moodGoal.status === 'none' ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Abre as configurações de rotina"
+          onPress={() => router.push('/settings')}
+          style={({ pressed }) => [styles.goalCard, pressed && styles.pressed]}>
+          <Text style={styles.goalTitle}>Defina um objetivo de humor para a semana</Text>
+          <Text style={styles.goalText}>
+            Escolha um humor médio mínimo e ative a pergunta da manhã em Configurações → Rotina.
+          </Text>
+        </Pressable>
+      ) : (
         <Pressable
           accessibilityRole="button"
           accessibilityHint="Abre as configurações do objetivo"
@@ -200,7 +211,7 @@ export default function HomeScreen() {
                 : `Abaixo do objetivo: média ${formatDecimal(moodGoal.average)} em ${moodGoal.days} ${moodGoal.days === 1 ? 'dia' : 'dias'}. Seja gentil com você — que tal uma prática curta?`}
           </Text>
         </Pressable>
-      ) : null}
+      )}
 
       {/* RF-69: pinned techniques. */}
       {shortcuts.length ? (

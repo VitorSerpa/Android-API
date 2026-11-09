@@ -121,6 +121,30 @@ describe('mergeUserData', () => {
     assert.deepEqual(merged.health[day].symptoms, ['Cansaço']);
   });
 
+  test('primeira sincronização de um aparelho novo mantém as configurações e exclusões da conta', () => {
+    const account = freshData();
+    const deletedGoal = account.goals[0].id;
+    const remote: UserData = {
+      ...account,
+      goals: account.goals.slice(1),
+      checkIns: [checkIn('2026-10-01')],
+      settings: { ...account.settings, breathingMinutes: 5, weeklyMoodGoal: 3.5, crisisLocation: true },
+    };
+    const local: UserData = { ...freshData(), checkIns: [checkIn('2026-10-02')] };
+    const merged = mergeUserData(null, local, remote);
+    assert.equal(merged.settings.breathingMinutes, 5);
+    assert.equal(merged.settings.weeklyMoodGoal, 3.5);
+    assert.equal(merged.settings.crisisLocation, true);
+    assert.ok(!ids(merged.goals).includes(deletedGoal));
+    assert.equal(merged.checkIns.length, 2);
+  });
+
+  test('primeira sincronização: o que o aparelho novo mudou antes de sincronizar prevalece', () => {
+    const remote = freshData();
+    const local: UserData = { ...freshData(), settings: { ...freshData().settings, breathingMinutes: 3 } };
+    assert.equal(mergeUserData(null, local, remote).settings.breathingMinutes, 3);
+  });
+
   test('não muda nada quando os dois lados são iguais', () => {
     const data = { ...freshData(), checkIns: [checkIn('2026-10-01')] };
     assert.ok(deepEqual(mergeUserData(data, data, structuredClone(data)), data));

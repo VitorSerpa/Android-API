@@ -46,6 +46,24 @@ export async function pickPhoto(source: 'camera' | 'library'): Promise<Attachmen
   return { id: createId(), kind: 'photo', uri: keep(result.assets[0].uri, 'jpg'), createdAt: new Date().toISOString() };
 }
 
+/**
+ * Saved URIs are absolute, and on iOS the app's container path changes when the
+ * app is reinstalled (the sideloaded build is re-signed every 7 days). The file
+ * itself stays in `Documents/media`, so it is found again by its name.
+ */
+export function resolveMediaUri(uri: string): string {
+  if (!uri.startsWith('file:')) return uri;
+  try {
+    if (new File(uri).exists) return uri;
+    const name = /\/media\/([^/?#]+)$/.exec(uri)?.[1];
+    if (!name) return uri;
+    const moved = new File(mediaDirectory(), name);
+    return moved.exists ? moved.uri : uri;
+  } catch {
+    return uri;
+  }
+}
+
 /** `.wav` from the speech recogniser (RF-60), `.m4a` from the plain recorder. */
 const audioExtension = (uri: string) => (/\.wav(?:[?#].*)?$/i.test(uri) ? 'wav' : 'm4a');
 
@@ -66,7 +84,7 @@ export function keepRecording(uri: string, durationSec: number): Attachment {
 
 export function deleteMediaFile(uri: string) {
   try {
-    const file = new File(uri);
+    const file = new File(resolveMediaUri(uri));
     if (file.exists) file.delete();
   } catch (error) {
     console.warn('Falha ao apagar anexo', error);
@@ -76,7 +94,7 @@ export function deleteMediaFile(uri: string) {
 /** For the JSON backup (RF-38): the file's bytes as base64, or `null` if it is gone. */
 export async function mediaToBase64(uri: string): Promise<string | null> {
   try {
-    const file = new File(uri);
+    const file = new File(resolveMediaUri(uri));
     return file.exists ? await file.base64() : null;
   } catch {
     return null;

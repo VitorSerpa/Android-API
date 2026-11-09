@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { apiConfigured, WS_URL, type GroupMessage } from '@/lib/api';
+import { getWsUrl, isApiConfigured, type GroupMessage } from '@/lib/api';
 
 /**
  * Anonymous support-group chat (RF-54). Messages carry no name or id of the
@@ -100,7 +100,7 @@ export function useGroupChat(userId: string, groupId: string, offlineMode: boole
   }, [groupId]);
 
   useEffect(() => {
-    if (!cache || offlineMode || !apiConfigured) return;
+    if (!cache || offlineMode || !isApiConfigured()) return;
 
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
@@ -108,7 +108,7 @@ export function useGroupChat(userId: string, groupId: string, offlineMode: boole
 
     const connect = () => {
       setStatus('connecting');
-      const socket = new WebSocket(WS_URL);
+      const socket = new WebSocket(getWsUrl());
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -188,5 +188,5 @@ export function useGroupChat(userId: string, groupId: string, offlineMode: boole
       .map((item) => ({ key: item.clientId, text: item.text, createdAt: item.createdAt, mine: true, pending: true })),
   ];
 
-  return { items, status: offlineMode || !apiConfigured ? ('disabled' as const) : status, send, ready: cache !== null };
+  return { items, status: offlineMode || !isApiConfigured() ? ('disabled' as const) : status, send, ready: cache !== null };
 }

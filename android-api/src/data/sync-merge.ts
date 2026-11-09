@@ -1,3 +1,4 @@
+import { createDefaultUserData } from '@/data/defaults';
 import type { UserData } from '@/data/types';
 
 /**
@@ -137,10 +138,12 @@ const NEWEST_FIRST: Partial<Record<keyof UserData, string>> = {
 
 /**
  * Merges two versions of the user's document. `base` is `null` on the first
- * sync of an account: then both sides are treated as additions and joined.
+ * sync of a device: then the base is a brand-new account, so records on both
+ * sides are joined, a setting the device never touched takes the server's
+ * value, and a default item deleted elsewhere stays deleted.
  */
 export function mergeUserData(base: UserData | null, local: UserData, remote: UserData): UserData {
-  const merged = merge3(base ?? {}, local, remote) as UserData;
+  const merged = merge3(base ?? createDefaultUserData(), local, remote) as UserData;
   const sorted = { ...merged } as Record<string, Json>;
   for (const [key, field] of Object.entries(NEWEST_FIRST)) {
     const list = sorted[key];

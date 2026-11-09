@@ -2,13 +2,39 @@
  * Client for the Node.js server in `/server`: sync of the user's document
  * (US-14), supporter invites and the anonymous support groups over WebSocket
  * (US-13, currently hidden in the app). Configure it with
- * `EXPO_PUBLIC_API_URL` (e.g. `http://10.0.2.2:3000` on the Android emulator).
+ * `EXPO_PUBLIC_API_URL` (e.g. `http://10.0.2.2:3000` on the Android emulator) or,
+ * on the phone, in Configurações → Sincronização.
  */
 
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
-export const apiConfigured = API_URL.length > 0;
+export const DEFAULT_API_URL = normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL ?? '');
 
-export const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
+let apiUrl = DEFAULT_API_URL;
+
+/**
+ * `http://192.168.0.10:3000/` → `http://192.168.0.10:3000`; adds `http://` when
+ * missing. Returns '' for an empty or invalid address.
+ */
+export function normalizeApiUrl(value: string): string {
+  let url = value.trim().replace(/\/+$/, '');
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+  return /^https?:\/\/[^\s/?#]+(?::\d+)?(\/[^\s?#]*)?$/i.test(url) ? url : '';
+}
+
+/** The server address in use: the one typed in Configurações, or the build's default. */
+export const getApiUrl = () => apiUrl;
+export const isApiConfigured = () => apiUrl.length > 0;
+export const getWsUrl = () => apiUrl.replace(/^http/, 'ws') + '/ws';
+
+/**
+ * Changes the server address at runtime (Configurações → Sincronização), so a
+ * build installed on the phone can reach the computer even when its IP
+ * changes. `null` goes back to the build's default. Persisting it is up to the
+ * caller (`lib/server-address.ts`).
+ */
+export function setApiUrl(value: string | null) {
+  apiUrl = value === null ? DEFAULT_API_URL : normalizeApiUrl(value);
+}
 
 export class ApiError extends Error {
   constructor(
@@ -25,11 +51,11 @@ const TIMEOUT_MS = 10_000;
 type RequestOptions = RequestInit & { json?: unknown; token?: string; timeoutMs?: number; acceptStatus?: number[] };
 
 export async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
-  if (!apiConfigured) throw new ApiError('Servidor não configurado (EXPO_PUBLIC_API_URL).', null);
+  if (!isApiConfigured()) throw new ApiError('Servidor não configurado (EXPO_PUBLIC_API_URL).', null);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? TIMEOUT_MS);
   try {
-    const response = await fetch(`${API_URL}${path}`, {
+    const response = await fetch(`${apiUrl}${path}`, {
       ...init,
       signal: controller.signal,
       headers: {

@@ -4,12 +4,13 @@ import { Platform } from 'react-native';
 import type { TranscriptStatus } from '@/data/types';
 
 /**
- * RF-60: records a voice note and transcribes it at the same time.
+ * RF-60: records a voice note and transcribes it at the same time, on Android
+ * and on iPhone (Apple's Speech framework).
  *
- * Android's speech recogniser owns the microphone while it listens, so instead
+ * The system speech recogniser owns the microphone while it listens, so instead
  * of recording first and transcribing the file afterwards, the recogniser
- * itself records (`recordingOptions.persist`, Android 13+) and returns both the
- * text and a 16 kHz WAV file. Where that is not possible (Android 12 or older,
+ * itself records (`recordingOptions.persist`, Android 13+ and iOS) and returns
+ * both the text and a 16 kHz WAV file. Where that is not possible (Android 12 or older,
  * no recognition service, offline mode without an on-device model), callers
  * fall back to the plain recorder and the note is kept without text (CA-02).
  *
@@ -32,7 +33,7 @@ export type TranscribedRecording = {
 
 /** Whether recording-with-transcription can run on this device right now. */
 export function canTranscribeWhileRecording(offlineMode: boolean): boolean {
-  if (Platform.OS !== 'android') return false;
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') return false;
   try {
     if (!ExpoSpeechRecognitionModule.supportsRecording()) return false;
     if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) return false;
@@ -57,7 +58,10 @@ const PROBLEMS: Partial<Record<string, string>> = {
   'no-speech': 'Nenhuma fala foi reconhecida.',
   'speech-timeout': 'Nenhuma fala foi reconhecida.',
   'language-not-supported': 'O reconhecimento de voz em português não está disponível neste aparelho.',
-  'service-not-allowed': 'O serviço de reconhecimento de voz do Android está indisponível.',
+  'service-not-allowed':
+    Platform.OS === 'ios'
+      ? 'O reconhecimento de voz está desligado. Ative a Siri e o Ditado nos Ajustes do iPhone.'
+      : 'O serviço de reconhecimento de voz do Android está indisponível.',
   'not-allowed': 'Permissão de reconhecimento de voz negada.',
   busy: 'O reconhecimento de voz está ocupado com outro app.',
 };
@@ -156,7 +160,10 @@ export function startTranscribingRecording({
         EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 8000,
         EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 8000,
       },
-      recordingOptions: { persist: true },
+      // iOS: 16-bit/16 kHz like Android (the default 32-bit float WAV is 4× larger).
+      recordingOptions: { persist: true, outputSampleRate: 16000, outputEncoding: 'pcmFormatInt16' },
+      // iOS: a normal playback session (the default "measurement" mode leaves the speaker almost mute).
+      iosCategory: { category: 'playAndRecord', categoryOptions: ['defaultToSpeaker', 'allowBluetooth'], mode: 'default' },
     });
   } catch (cause) {
     error = { code: 'client', message: cause instanceof Error ? cause.message : String(cause) };

@@ -8,6 +8,7 @@ import { LineChart } from '@/components/mente/line-chart';
 import { RadarChart } from '@/components/mente/radar-chart';
 import { ScatterChart } from '@/components/mente/scatter-chart';
 import { WordCloud } from '@/components/mente/word-cloud';
+import { anxietyValueText, chartDayTitle, chartWeekTitle, moodValueText, profileValueText, wellbeingDetails } from '@/data/history-charts';
 import { describeSleepMood, moodByProfile, mostBalancedProfile, recentWeeks, sleepMoodPoints } from '@/data/comparisons';
 import { Screen } from '@/components/mente/screen';
 import { Card, MIN_TOUCH, Spacer, TopBar } from '@/components/mente/ui';
@@ -24,6 +25,7 @@ import {
 } from '@/data/insights';
 import { MOODS } from '@/data/types';
 import { diaryWordFrequencies } from '@/data/word-cloud';
+import { diaryWordEntries } from '@/data/word-cloud-ui';
 import { useUserData } from '@/data/user-data-context';
 import { MONTHS, WEEKDAYS_SHORT, fromDayKey, lastDays, toDayKey } from '@/lib/dates';
 import { usePersistedState } from '@/lib/screen-state';
@@ -71,13 +73,17 @@ export default function HistoryScreen() {
     { label: 'Média mensal', ...monthly, previousLabel: 'nos 30 dias anteriores' },
   ];
 
+  const openDay = (day: string) => router.push({ pathname: '/day/[day]', params: { day } });
+  const dayTitles = days.map(chartDayTitle);
+
   const wellbeing = wellbeingIndicators(data);
+  const details = wellbeingDetails(wellbeing);
   const axes = [
-    { label: 'Humor', percent: wellbeing.mood },
-    { label: 'Sono', percent: wellbeing.sleep },
-    { label: 'Ansiedade', percent: wellbeing.anxiety },
-    { label: 'Estresse', percent: wellbeing.stress },
-    { label: 'Atividade', percent: wellbeing.activity },
+    { label: 'Humor', percent: wellbeing.mood, detail: details.mood },
+    { label: 'Sono', percent: wellbeing.sleep, detail: details.sleep },
+    { label: 'Ansiedade', percent: wellbeing.anxiety, detail: details.anxiety },
+    { label: 'Estresse', percent: wellbeing.stress, detail: details.stress },
+    { label: 'Atividade', percent: wellbeing.activity, detail: details.activity },
   ];
 
   const correlation = activityCorrelations(data);
@@ -127,25 +133,44 @@ export default function HistoryScreen() {
             <Text style={styles.legendText}>Ansiedade</Text>
           </View>
         </View>
+        {/* Sits between the header and the plot, so the tooltip that opens above the plot stays inside the card. */}
+        <Text style={styles.caption}>
+          {hasData ? 'Toque ou arraste no gráfico para ver cada dia. ' : ''}Dias sem registro aparecem como lacuna na linha.
+        </Text>
 
-        <View
-          onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
-          accessible
-          accessibilityLabel={`Gráfico de linha dos últimos ${period.days} dias. ${perDay.filter((item) => item.count).length} dias com registro.`}>
+        <View onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}>
           {chartWidth > 0 ? (
             <LineChart
+              // New x domain per period: start with no selection and replay the reveal.
+              key={period.days}
               width={chartWidth}
               height={CHART_HEIGHT}
+              labels={dayTitles}
+              onPressPoint={(index) => openDay(days[index])}
+              tooltipActionLabel="Ver dia"
+              accessibilityLabel={`Gráfico de linha do humor e da ansiedade nos últimos ${period.days} dias. ${perDay.filter((item) => item.count).length} dias com registro.`}
               series={[
-                { values: perDay.map((item) => (item.anxiety === null ? null : item.anxiety / 10)), color: c.anxiety },
-                { values: perDay.map((item) => (item.mood === null ? null : (item.mood - 1) / 4)), color: c.mood, dots: true },
+                {
+                  label: 'Ansiedade',
+                  values: perDay.map((item) => (item.anxiety === null ? null : item.anxiety / 10)),
+                  displayValues: perDay.map((item) => anxietyValueText(item.anxiety)),
+                  color: c.anxiety,
+                },
+                {
+                  label: 'Humor',
+                  values: perDay.map((item) => (item.mood === null ? null : (item.mood - 1) / 4)),
+                  displayValues: perDay.map((item) => moodValueText(item.mood)),
+                  color: c.mood,
+                  dots: true,
+                  area: true,
+                },
               ]}
             />
           ) : (
             <View style={{ height: CHART_HEIGHT }} />
           )}
           {!hasData ? (
-            <View style={styles.chartEmpty}>
+            <View style={styles.chartEmpty} pointerEvents="none">
               <Text style={styles.chartEmptyText}>Sem check-ins neste período</Text>
             </View>
           ) : null}
@@ -158,7 +183,6 @@ export default function HistoryScreen() {
             </Text>
           ))}
         </View>
-        <Text style={styles.caption}>Dias sem registro aparecem como lacuna na linha.</Text>
       </Card>
 
       <View style={styles.averageRow}>
@@ -250,7 +274,7 @@ export default function HistoryScreen() {
         <Text style={styles.cardTitle}>Indicadores de bem-estar</Text>
         <RadarChart axes={axes} />
         <Text style={styles.caption}>
-          Últimos 30 dias. Ansiedade e estresse: quanto maior, mais intensos. Estresse vem do teste rápido de estresse.
+          Toque em um indicador para ver o que ele mede. Últimos 30 dias. Ansiedade e estresse: quanto maior, mais intensos. Estresse vem do teste rápido de estresse.
         </Text>
       </Card>
 
@@ -277,27 +301,27 @@ export default function HistoryScreen() {
         ))}
       </Card>
 
-      <SleepMoodCard width={chartWidth} />
+      <SleepMoodCard width={chartWidth} onOpenDay={openDay} />
       <ProfilesCard width={chartWidth} />
-      <WordsCard />
+      <WordsCard onOpenDay={openDay} />
     </Screen>
   );
 }
 
 /** RF-64 / US-17 CA-01: each dot pairs a night's sleep with the next day's mood. */
-function SleepMoodCard({ width }: { width: number }) {
+function SleepMoodCard({ width, onOpenDay }: { width: number; onOpenDay: (day: string) => void }) {
   const styles = useStyles();
   const { data } = useUserData();
   const points = sleepMoodPoints(data);
   return (
     <Card style={styles.card}>
       <Text style={styles.cardTitle}>Sono e humor do dia seguinte</Text>
-      <Text style={styles.caption}>Cada ponto é uma noite: horas dormidas × humor médio do dia em que você acordou (últimos 90 dias).</Text>
-      {points.length && width > 0 ? (
-        <View accessible accessibilityLabel={`Gráfico de dispersão com ${points.length} noites. ${describeSleepMood(points)}`}>
-          <ScatterChart points={points} width={width} />
-        </View>
-      ) : null}
+      <Text style={styles.caption}>
+        Cada ponto é uma noite: horas dormidas × humor médio do dia em que você acordou (últimos 90 dias).
+        {points.length ? ' Toque nos pontos para ver os detalhes.' : ''}
+      </Text>
+      {/* No `accessible` wrapper: the chart is its own adjustable element and its tooltip must stay reachable. */}
+      {points.length && width > 0 ? <ScatterChart points={points} width={width} onPressPoint={onOpenDay} hint={null} /> : null}
       <View style={styles.axisRow}>
         <Text style={styles.legendText}>Eixo vertical: humor (1 a 5)</Text>
         <Text style={styles.legendText}>Eixo horizontal: horas de sono</Text>
@@ -326,7 +350,10 @@ function ProfilesCard({ width }: { width: number }) {
   return (
     <Card style={styles.card}>
       <Text style={styles.cardTitle}>Humor por perfil de vida</Text>
-      <Text style={styles.caption}>Média semanal das últimas 8 semanas. Toque nos perfis para mostrar ou esconder cada curva.</Text>
+      <Text style={styles.caption}>
+        Média semanal das últimas 8 semanas. Toque nos perfis para mostrar ou esconder cada curva
+        {hasData ? ' e toque ou arraste no gráfico para ver cada semana.' : '.'}
+      </Text>
       <ChoiceChips
         multiple
         label="Perfis exibidos"
@@ -335,17 +362,19 @@ function ProfilesCard({ width }: { width: number }) {
         selected={selected}
         onToggle={(id) => setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
       />
-      <View
-        accessible
-        accessibilityLabel={`Curvas de humor por perfil: ${visible
-          .map((item) => `${item.name}, média ${item.overall === null ? 'sem dados' : formatDecimal(item.overall)}`)
-          .join('; ')}`}>
+      <View>
         {width > 0 ? (
           <LineChart
             width={width}
             height={CHART_HEIGHT}
+            labels={weeks.map((week) => chartWeekTitle(week.start))}
+            accessibilityLabel={`Curvas de humor por perfil: ${visible
+              .map((item) => `${item.name}, média ${item.overall === null ? 'sem dados' : formatDecimal(item.overall)}`)
+              .join('; ')}`}
             series={visible.map((item) => ({
+              label: item.name,
               values: item.weekly.map((value) => (value === null ? null : (value - 1) / 4)),
+              displayValues: item.weekly.map(profileValueText),
               color: colorOf(item.profileId),
               dots: true,
             }))}
@@ -354,7 +383,7 @@ function ProfilesCard({ width }: { width: number }) {
           <View style={{ height: CHART_HEIGHT }} />
         )}
         {!hasData ? (
-          <View style={styles.chartEmpty}>
+          <View style={styles.chartEmpty} pointerEvents="none">
             <Text style={styles.chartEmptyText}>Associe seus check-ins a um perfil para ver as curvas</Text>
           </View>
         ) : null}
@@ -387,12 +416,13 @@ const WORD_PERIODS = [
 ] as const;
 
 /** RF-63 / US-16 CA-02: frequent words of the diary, sized by frequency, without common words. */
-function WordsCard() {
+function WordsCard({ onOpenDay }: { onOpenDay: (day: string) => void }) {
   const styles = useStyles();
   const { data } = useUserData();
   const [periodIndex, setPeriodIndex] = usePersistedState('history:words-period', 0);
   const period = WORD_PERIODS[periodIndex] ?? WORD_PERIODS[0];
   const words = diaryWordFrequencies(data, { days: period.days });
+  const entries = diaryWordEntries(data, { days: period.days });
 
   return (
     <Card style={styles.card}>
@@ -405,12 +435,12 @@ function WordsCard() {
         onToggle={setPeriodIndex}
       />
       {words.length ? (
-        <WordCloud words={words} />
+        <WordCloud words={words} entries={entries} onPressDay={onOpenDay} />
       ) : (
         <Text style={styles.insightText}>Escreva no diário para ver aqui as palavras que mais aparecem.</Text>
       )}
       <Text style={styles.caption}>
-        O tamanho de cada palavra mostra quantas vezes ela aparece. Artigos, preposições e outras palavras comuns ficam de fora.
+        {words.length ? 'Toque em uma palavra para ver em quais dias ela aparece. ' : ''}O tamanho de cada palavra mostra quantas vezes ela aparece. Artigos, preposições e outras palavras comuns ficam de fora.
       </Text>
     </Card>
   );

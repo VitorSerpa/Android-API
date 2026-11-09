@@ -91,7 +91,8 @@ export function dayTimeline(data: UserData, day: string): TimelineEvent[] {
         ...(audio ? [`${audio} áudio${audio > 1 ? 's' : ''}`] : []),
         ...entry.attachments.filter((item) => item.transcript).map((item) => `Áudio: “${item.transcript}”`),
       ].filter(Boolean),
-      diaryEntryId: entry.kind === 'free' ? entry.id : undefined,
+      // The focus editor only shows text: entries with photos or audio expand in place instead (CA-01).
+      diaryEntryId: entry.kind === 'free' && !entry.attachments.length ? entry.id : undefined,
     });
   }
 

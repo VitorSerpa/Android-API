@@ -37,7 +37,7 @@ beforeEach(() => {
 });
 
 describe('Disponibilidade', () => {
-  test('só no Android com gravação e serviço de voz disponíveis', () => {
+  test('no Android e no iPhone, com gravação e serviço de voz disponíveis', () => {
     assert.equal(canTranscribeWhileRecording(false), true);
     speechControl.supportsRecording = false; // Android 12 ou anterior
     assert.equal(canTranscribeWhileRecording(false), false);
@@ -45,6 +45,8 @@ describe('Disponibilidade', () => {
     speechControl.recognitionAvailable = false;
     assert.equal(canTranscribeWhileRecording(false), false);
     speechControl.reset();
+    Platform.OS = 'ios';
+    assert.equal(canTranscribeWhileRecording(false), true);
     Platform.OS = 'web';
     assert.equal(canTranscribeWhileRecording(false), false);
   });
@@ -72,7 +74,7 @@ describe('Gravação com transcrição', () => {
     assert.equal(online.lang, TRANSCRIPTION_LANG);
     assert.equal(online.continuous, true);
     assert.equal(online.interimResults, true);
-    assert.deepEqual(online.recordingOptions, { persist: true });
+    assert.deepEqual(online.recordingOptions, { persist: true, outputSampleRate: 16000, outputEncoding: 'pcmFormatInt16' });
     assert.equal(online.requiresOnDeviceRecognition, false);
     assert.equal(offline.requiresOnDeviceRecognition, true);
   });

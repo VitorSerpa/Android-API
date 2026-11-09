@@ -209,7 +209,8 @@ scripts/iphone.sh status
 
 ### Diferenças no iPhone
 
-- **Transcrição de áudio:** o RF-60 foi implementado com o reconhecedor do Android. No iPhone, os áudios são gravados sem texto, como no caso CA-02 do backlog.
+- **Transcrição de áudio:** no iPhone a transcrição usa o reconhecimento de voz da Apple (precisa da Siri/Ditado ativos; no modo offline completo, só funciona se o português estiver baixado para ditado no aparelho). Na primeira gravação o iOS pede as permissões de microfone e de reconhecimento de fala.
+- **Sincronização na versão sem PC:** o `.ipa` do perfil `ios-sideload` já vem com `http://192.168.15.9:3000`. Se o IP do computador mudar, ou para usar o Tailscale, troque em **Perfil → Sincronização e rotina → Endereço do servidor** e toque em **Salvar e testar**. O servidor precisa estar rodando no computador: `scripts/iphone.sh server` (ele usa o projeto Firebase real `androi-api`).
 - **Sono pelo Health Connect:** o RF-57 só existe no Android.
 - **Alternativas que não servem:**
   - Expo Go da App Store: a versão atual só abre projetos SDK 58, e este projeto é SDK 57.

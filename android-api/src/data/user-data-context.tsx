@@ -18,6 +18,8 @@ export type { DiaryDraft, UserDataActions } from '@/data/user-data-actions';
 export type UserStore = {
   getSnapshot: () => UserData;
   subscribe: (listener: () => void) => () => void;
+  /** Waits for pending saves; rejects if the latest change could not be written. */
+  flush: () => Promise<void>;
   actions: UserDataActions;
 };
 
@@ -33,6 +35,7 @@ function createUserStore(userId: string, initial: UserData): UserStore {
   let data = initial;
   let writes = Promise.resolve();
   let lastErrorAt = 0;
+  let unsaved = false;
   const listeners = new Set<() => void>();
 
   const update = (recipe: Recipe) => {
@@ -42,7 +45,11 @@ function createUserStore(userId: string, initial: UserData): UserStore {
     listeners.forEach((listener) => listener());
     writes = writes
       .then(() => userDataRepository.save(userId, next))
+      .then(() => {
+        if (data === next) unsaved = false;
+      })
       .catch(() => {
+        unsaved = true;
         // The repository already logged it; tell the user, but not on every keystroke.
         if (Date.now() - lastErrorAt < SAVE_ERROR_COOLDOWN_MS) return;
         lastErrorAt = Date.now();
@@ -55,6 +62,10 @@ function createUserStore(userId: string, initial: UserData): UserStore {
 
   return {
     getSnapshot: () => data,
+    flush: () =>
+      writes.then(() => {
+        if (unsaved) throw new Error('Não foi possível gravar os dados no aparelho.');
+      }),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

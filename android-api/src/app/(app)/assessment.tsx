@@ -8,6 +8,7 @@ import { MenteRadius, MenteSpacing, MenteType } from '@/constants/mente-theme';
 import { ASSESSMENTS, normaliseAnswers } from '@/data/assessments';
 import type { AssessmentKind } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
+import { usePersistedState, useScrollRestoration } from '@/lib/screen-state';
 import { makeStyles } from '@/theme';
 
 const isKind = (value: unknown): value is AssessmentKind =>
@@ -20,9 +21,11 @@ export default function AssessmentScreen() {
   const definition = ASSESSMENTS[isKind(params.kind) ? params.kind : 'wellbeing'];
   const { actions } = useUserData();
 
-  const [answers, setAnswers] = useState<(number | null)[]>(() =>
+  // RF-59: half-answered tests and the scroll position survive closing the app.
+  const [answers, setAnswers, resetAnswers] = usePersistedState<(number | null)[]>(`assessment:${definition.kind}:answers`, () =>
     definition.questions.map(() => null),
   );
+  const [scrollRef, scroll] = useScrollRestoration();
   const [result, setResult] = useState<number | null>(null);
 
   // CA-03: the score only exists once every question has an answer.
@@ -33,6 +36,7 @@ export default function AssessmentScreen() {
     if (!complete) return;
     const score = definition.score(normaliseAnswers(definition, answers as number[]));
     actions.saveAssessment(definition.kind, score);
+    resetAnswers(definition.questions.map(() => null));
     setResult(score);
   };
 
@@ -41,7 +45,7 @@ export default function AssessmentScreen() {
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} {...scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <TopBar title={definition.title} />
 
           {result !== null ? (

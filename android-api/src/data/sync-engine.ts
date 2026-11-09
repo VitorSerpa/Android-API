@@ -3,7 +3,7 @@ import { userDataRepository, type SyncState } from '@/data/repository';
 import { deepEqual, mergeUserData } from '@/data/sync-merge';
 import type { UserData } from '@/data/types';
 import type { UserStore } from '@/data/user-data-context';
-import { apiConfigured, ApiError, pullDocument, pushDocument } from '@/lib/api';
+import { ApiError, isApiConfigured, pullDocument, pushDocument } from '@/lib/api';
 
 /**
  * Keeps the device's SQLite document and the server copy in step (US-14 / RF-58).
@@ -55,8 +55,11 @@ export function createSyncEngine({
   const save = (state: SyncState) => userDataRepository.saveSyncState(userId, state);
 
   /** Folds `remote` into whatever the user has now; returns the resulting document. */
-  const absorb = (base: UserData | null, remote: UserData) => {
+  const absorb = async (base: UserData | null, remote: UserData) => {
     store.actions.applyRemote((current) => mergeUserData(base, current, remote));
+    // US-21 CA-02: the document must be on disk before the sync state that points
+    // past it, or a crash in between would push the old copy over the server's.
+    await store.flush();
     return store.getSnapshot();
   };
 
@@ -65,7 +68,7 @@ export function createSyncEngine({
       setStatus({ kind: 'disabled', reason: 'offline-mode' });
       return;
     }
-    if (!apiConfigured) {
+    if (!isApiConfigured()) {
       setStatus({ kind: 'disabled', reason: 'not-configured' });
       return;
     }
@@ -86,7 +89,7 @@ export function createSyncEngine({
         return;
       }
       const remoteDoc = migrate(remote.data);
-      const merged = absorb(state.base, remoteDoc);
+      const merged = await absorb(state.base, remoteDoc);
       state = { revision: remote.revision, base: remoteDoc, lastSyncAt: new Date().toISOString() };
       if (deepEqual(merged, remoteDoc)) {
         await save(state);
@@ -107,7 +110,7 @@ export function createSyncEngine({
         return;
       }
       const remoteDoc = result.data ? migrate(result.data) : null;
-      if (remoteDoc) absorb(state.base, remoteDoc);
+      if (remoteDoc) await absorb(state.base, remoteDoc);
       state = { ...state, revision: result.revision, base: remoteDoc ?? state.base };
     }
     throw new ApiError('Os dados mudaram várias vezes seguidas em outro aparelho. Tentaremos de novo em instantes.', 409);

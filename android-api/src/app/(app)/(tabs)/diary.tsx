@@ -15,7 +15,7 @@ import { useUserData } from '@/data/user-data-context';
 import { useAutosave } from '@/hooks/use-autosave';
 import { formatDayMonth, formatShortDate, formatTime, fromDayKey, toDayKey } from '@/lib/dates';
 import { choose, confirm, notify } from '@/lib/dialogs';
-import { deleteMediaFile, keepRecording, pickPhoto } from '@/lib/media';
+import { deleteMediaFile, keepRecording, pickPhoto, resolveMediaUri } from '@/lib/media';
 import { usePersistedState } from '@/lib/screen-state';
 import { makeStyles, useColors } from '@/theme';
 
@@ -221,7 +221,7 @@ function FreeWriting() {
             {entry.attachments.map((attachment) =>
               attachment.kind === 'photo' ? (
                 <View key={attachment.id} style={styles.photoWrap}>
-                  <Image source={{ uri: attachment.uri }} style={styles.photo} contentFit="cover" accessibilityLabel="Foto anexada" />
+                  <Image source={{ uri: resolveMediaUri(attachment.uri) }} style={styles.photo} contentFit="cover" accessibilityLabel="Foto anexada" />
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Remover foto"
@@ -468,7 +468,7 @@ function RecentEntries() {
                   attachment.kind === 'photo' ? (
                     <Image
                       key={attachment.id}
-                      source={{ uri: attachment.uri }}
+                      source={{ uri: resolveMediaUri(attachment.uri) }}
                       style={styles.entryPhoto}
                       contentFit="cover"
                       accessibilityLabel="Foto anexada"

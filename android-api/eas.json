@@ -17,7 +17,9 @@
     "ios-sideload": {
       "environment": "preview",
       "env": {
-        "IOS_CONFIGURATION": "Release"
+        "IOS_CONFIGURATION": "Release",
+        "IOS_ALLOW_HTTP": "1",
+        "EXPO_PUBLIC_API_URL": "http://192.168.15.9:3000"
       },
       "ios": {
         "withoutCredentials": true,

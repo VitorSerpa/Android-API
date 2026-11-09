@@ -12,3 +12,7 @@ export function mediaFromBase64(base64: string, extension: string) {
 export function keepAudioFile(uri: string) {
   return uri;
 }
+
+export function resolveMediaUri(uri: string): string {
+  return uri;
+}

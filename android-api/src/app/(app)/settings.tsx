@@ -11,9 +11,11 @@ import { userDataRepository } from '@/data/repository';
 import { useSync } from '@/data/sync-context';
 import type { LifeProfile } from '@/data/types';
 import { useUserData } from '@/data/user-data-context';
+import { DEFAULT_API_URL, getApiUrl, isApiConfigured, normalizeApiUrl, request } from '@/lib/api';
 import { formatShortDate, formatTime } from '@/lib/dates';
 import { confirm, notify } from '@/lib/dialogs';
 import { requestLocationPermission } from '@/lib/location';
+import { saveServerAddress } from '@/lib/server-address';
 import { makeStyles, PALETTE_NAMES, PALETTES, useTheme, type DarkModePreference, type PaletteId } from '@/theme';
 
 const DARK_MODES: DarkModePreference[] = ['system', 'schedule', 'light', 'dark'];
@@ -77,6 +79,10 @@ export default function SettingsScreen() {
     <StackScreen>
       <TopBar title="Configurações" />
 
+      <SyncCard />
+
+      <RoutineCard />
+
       <Card style={styles.card}>
         <SectionEyebrow>APARÊNCIA</SectionEyebrow>
         <Text style={styles.label}>Paleta de cores</Text>
@@ -126,8 +132,6 @@ export default function SettingsScreen() {
       </Card>
 
       <ProfilesCard />
-
-      <RoutineCard />
 
       {/* Descanso digital desativado (RF-53). Para reativar, descomente este card, `rest` acima e o <DigitalRestGate> em (app)/_layout.tsx.
       <Card style={styles.card}>
@@ -190,8 +194,6 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
-      <SyncCard />
-
       <Card style={styles.card}>
         <SectionEyebrow>MEUS DADOS</SectionEyebrow>
         <Text style={styles.detail}>
@@ -218,17 +220,44 @@ function SyncCard() {
   const styles = useStyles();
   const { status, syncNow } = useSync();
   const busy = status.kind === 'syncing';
+  const [address, setAddress] = useState(getApiUrl());
+  const [checking, setChecking] = useState(false);
 
   const detail =
     status.kind === 'disabled'
       ? status.reason === 'offline-mode'
         ? 'Pausada: o modo offline completo está ativo. Seus registros continuam guardados neste aparelho.'
-        : 'Indisponível: o endereço do servidor (EXPO_PUBLIC_API_URL) não está configurado.'
+        : 'Indisponível: informe abaixo o endereço do servidor.'
       : status.kind === 'syncing'
         ? 'Sincronizando…'
         : status.kind === 'error'
           ? `${status.message} ${describeSync(status.lastSyncAt)}`
           : describeSync(status.lastSyncAt);
+
+  const saveAddress = async (value: string | null) => {
+    if (value !== null && value.trim() && !normalizeApiUrl(value)) {
+      notify('Endereço inválido', 'Use o formato http://192.168.0.10:3000');
+      return;
+    }
+    setChecking(true);
+    try {
+      await saveServerAddress(value);
+      setAddress(getApiUrl());
+      if (!isApiConfigured()) return;
+      try {
+        await request('/health', { timeoutMs: 5000 });
+      } catch {
+        notify(
+          'Servidor não respondeu',
+          `O endereço foi salvo, mas ${getApiUrl()} não respondeu. Confira se o servidor está rodando no computador e se o iPhone está na mesma rede (ou no Tailscale).`,
+        );
+        return;
+      }
+      await syncNow();
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
     <Card style={styles.card}>
@@ -243,6 +272,27 @@ function SyncCard() {
       {status.kind !== 'disabled' ? (
         <Button label={busy ? 'Sincronizando…' : 'Sincronizar agora'} variant="secondary" disabled={busy} onPress={() => syncNow()} />
       ) : null}
+      <Text style={styles.label}>Endereço do servidor</Text>
+      <Input
+        accessibilityLabel="Endereço do servidor"
+        placeholder="http://192.168.0.10:3000"
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+        value={address}
+        onChangeText={setAddress}
+      />
+      <View style={styles.row}>
+        <Button
+          label={checking ? 'Testando…' : 'Salvar e testar'}
+          disabled={checking}
+          onPress={() => saveAddress(address)}
+          style={styles.flex}
+        />
+        {DEFAULT_API_URL && address !== DEFAULT_API_URL ? (
+          <Button label="Usar o padrão" variant="secondary" disabled={checking} onPress={() => saveAddress(null)} style={styles.flex} />
+        ) : null}
+      </View>
     </Card>
   );
 }
